@@ -181,6 +181,20 @@ const assignTeacherToSection = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
+    // SECURITY FIX: Verify section belongs to the same school
+    const Section = require('../models/Section');
+    const Class = require('../models/Class');
+    
+    const section = await Section.findById(assignmentData.sectionId);
+    if (!section) {
+      return sendError(res, 'Section not found', 404);
+    }
+
+    const sectionClass = await Class.findById(section.class_id);
+    if (sectionClass.school_id !== req.tenantSchoolId) {
+      return sendError(res, 'Cannot assign teacher to another school\'s section', 403);
+    }
+
     const assignment = await Teacher.assignToSection(id, assignmentData);
 
     sendSuccess(res, assignment, 'Teacher assigned to section successfully', 201);
@@ -189,6 +203,10 @@ const assignTeacherToSection = async (req, res) => {
 
     if (error.code === '23505') {
       return sendError(res, 'Teacher already assigned to this section for this subject', 409);
+    }
+
+    if (error.message && error.message.includes('already has a form teacher')) {
+      return sendError(res, error.message, 409);
     }
 
     sendError(res, 'Failed to assign teacher', 500);

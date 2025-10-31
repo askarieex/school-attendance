@@ -7,6 +7,13 @@ const academicYearController = require('../controllers/academicYearController');
 const reportsController = require('../controllers/reportsController');
 const { authenticate, requireSchoolAdmin } = require('../middleware/auth');
 const { enforceSchoolTenancy } = require('../middleware/multiTenant');
+const {
+  validateStudent,
+  validateAttendance,
+  validateClass,
+  validateTeacher,
+  validateId
+} = require('../middleware/validation');
 
 /**
  * School Admin Routes
@@ -26,20 +33,20 @@ router.use(enforceSchoolTenancy);
 // GET /api/v1/school/students
 router.get('/students', schoolController.getStudents);
 
-// POST /api/v1/school/students
-router.post('/students', schoolController.createStudent);
+// POST /api/v1/school/students (with validation)
+router.post('/students', validateStudent.create, schoolController.createStudent);
 
 // POST /api/v1/school/students/import
 router.post('/students/import', schoolController.importStudents);
 
-// GET /api/v1/school/students/:id
-router.get('/students/:id', schoolController.getStudent);
+// GET /api/v1/school/students/:id (with validation)
+router.get('/students/:id', validateId, schoolController.getStudent);
 
-// PUT /api/v1/school/students/:id
-router.put('/students/:id', schoolController.updateStudent);
+// PUT /api/v1/school/students/:id (with validation)
+router.put('/students/:id', validateStudent.update, schoolController.updateStudent);
 
-// DELETE /api/v1/school/students/:id
-router.delete('/students/:id', schoolController.deleteStudent);
+// DELETE /api/v1/school/students/:id (with validation)
+router.delete('/students/:id', validateId, schoolController.deleteStudent);
 
 /**
  * DASHBOARD & ATTENDANCE
@@ -64,6 +71,12 @@ router.get('/attendance/today', schoolController.getTodayAttendance);
 
 // GET /api/v1/school/attendance/today/stats
 router.get('/attendance/today/stats', schoolController.getTodayAttendanceStats);
+
+// GET /api/v1/school/attendance/range (BATCH API for monthly calendar - HUGE PERFORMANCE BOOST with validation)
+router.get('/attendance/range', validateAttendance.getRange, schoolController.getAttendanceRange);
+
+// POST /api/v1/school/attendance/manual (with validation)
+router.post('/attendance/manual', validateAttendance.manual, schoolController.markManualAttendance);
 
 /**
  * REPORTS & ANALYTICS
@@ -125,20 +138,20 @@ router.delete('/devices/:deviceId/students/:studentId', schoolController.unenrol
 // GET /api/v1/school/classes
 router.get('/classes', classController.getClasses);
 
-// POST /api/v1/school/classes
-router.post('/classes', classController.createClass);
+// POST /api/v1/school/classes (with validation)
+router.post('/classes', validateClass.create, classController.createClass);
 
 // GET /api/v1/school/classes/statistics
 router.get('/classes/statistics', classController.getClassStatistics);
 
-// GET /api/v1/school/classes/:id
-router.get('/classes/:id', classController.getClass);
+// GET /api/v1/school/classes/:id (with validation)
+router.get('/classes/:id', validateId, classController.getClass);
 
-// PUT /api/v1/school/classes/:id
-router.put('/classes/:id', classController.updateClass);
+// PUT /api/v1/school/classes/:id (with validation)
+router.put('/classes/:id', validateClass.update, classController.updateClass);
 
-// DELETE /api/v1/school/classes/:id
-router.delete('/classes/:id', classController.deleteClass);
+// DELETE /api/v1/school/classes/:id (with validation)
+router.delete('/classes/:id', validateId, classController.deleteClass);
 
 /**
  * SECTION MANAGEMENT
@@ -176,29 +189,29 @@ router.delete('/sections/:sectionId/form-teacher', classController.removeFormTea
 // GET /api/v1/school/teachers
 router.get('/teachers', teacherController.getTeachers);
 
-// POST /api/v1/school/teachers
-router.post('/teachers', teacherController.createTeacher);
+// POST /api/v1/school/teachers (with validation)
+router.post('/teachers', validateTeacher.create, teacherController.createTeacher);
 
-// GET /api/v1/school/teachers/:id
-router.get('/teachers/:id', teacherController.getTeacher);
+// GET /api/v1/school/teachers/:id (with validation)
+router.get('/teachers/:id', validateId, teacherController.getTeacher);
 
-// PUT /api/v1/school/teachers/:id
-router.put('/teachers/:id', teacherController.updateTeacher);
+// PUT /api/v1/school/teachers/:id (with validation)
+router.put('/teachers/:id', validateTeacher.update, teacherController.updateTeacher);
 
-// DELETE /api/v1/school/teachers/:id
-router.delete('/teachers/:id', teacherController.deleteTeacher);
+// DELETE /api/v1/school/teachers/:id (with validation)
+router.delete('/teachers/:id', validateId, teacherController.deleteTeacher);
 
-// GET /api/v1/school/teachers/:id/assignments
-router.get('/teachers/:id/assignments', teacherController.getTeacherAssignments);
+// GET /api/v1/school/teachers/:id/assignments (with validation)
+router.get('/teachers/:id/assignments', validateId, teacherController.getTeacherAssignments);
 
-// POST /api/v1/school/teachers/:id/assignments
-router.post('/teachers/:id/assignments', teacherController.assignTeacherToSection);
+// POST /api/v1/school/teachers/:id/assignments (with validation)
+router.post('/teachers/:id/assignments', validateId, teacherController.assignTeacherToSection);
 
 // DELETE /api/v1/school/teachers/:id/assignments/:assignmentId
 router.delete('/teachers/:id/assignments/:assignmentId', teacherController.removeTeacherAssignment);
 
-// POST /api/v1/school/teachers/:id/reset-password
-router.post('/teachers/:id/reset-password', teacherController.resetTeacherPassword);
+// POST /api/v1/school/teachers/:id/reset-password (with validation)
+router.post('/teachers/:id/reset-password', validateTeacher.resetPassword, teacherController.resetTeacherPassword);
 
 /**
  * ACADEMIC YEAR MANAGEMENT
@@ -232,5 +245,23 @@ router.post('/academic-years/:id/vacations', academicYearController.addVacationP
 
 // DELETE /api/v1/school/vacations/:vacationId
 router.delete('/vacations/:vacationId', academicYearController.deleteVacationPeriod);
+
+/**
+ * REPORTS & ANALYTICS
+ */
+// GET /api/v1/school/reports/daily
+router.get('/reports/daily', reportsController.getDailyReport);
+
+// GET /api/v1/school/reports/monthly
+router.get('/reports/monthly', reportsController.getMonthlyReport);
+
+// GET /api/v1/school/reports/student/:studentId
+router.get('/reports/student/:studentId', reportsController.getStudentReport);
+
+// GET /api/v1/school/reports/class/:classId
+router.get('/reports/class/:classId', reportsController.getClassReport);
+
+// POST /api/v1/school/reports/export/:type
+router.post('/reports/export/:type', reportsController.exportReport);
 
 module.exports = router;

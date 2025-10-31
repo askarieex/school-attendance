@@ -10,11 +10,12 @@ async function processAttendance(log, device) {
     const { userPin, timestamp, status } = log;
 
     // 1. Find the student by device PIN mapping OR by student ID directly
+    // FIXED: Added is_active check to prevent deleted students from scanning
     let mappingResult = await query(
-      `SELECT dum.*, s.full_name, s.rfid_card_id
+      `SELECT dum.*, s.full_name, s.rfid_card_id, s.is_active
        FROM device_user_mappings dum
        JOIN students s ON dum.student_id = s.id
-       WHERE dum.device_id = $1 AND dum.device_pin = $2`,
+       WHERE dum.device_id = $1 AND dum.device_pin = $2 AND s.is_active = TRUE`,
       [device.id, userPin]
     );
 
@@ -78,31 +79,49 @@ async function processAttendance(log, device) {
     // 4. Extract date from timestamp
     const attendanceDate = timestamp.split(' ')[0]; // Get "2025-10-18" from "2025-10-18 08:45:30"
 
-    // 5. Check if attendance already recorded for this student today
-    const existingResult = await query(
-      `SELECT id FROM attendance_logs
-       WHERE student_id = $1 AND date = $2`,
-      [studentId, attendanceDate]
+    // 5. Check if student is on leave (FIXED: Integrated leave system)
+    const leaveCheck = await query(
+      `SELECT id, leave_type FROM leaves
+       WHERE student_id = $1
+       AND start_date <= $2
+       AND end_date >= $2
+       AND status = 'approved'
+       AND school_id = $3`,
+      [studentId, attendanceDate, device.school_id]
     );
 
-    if (existingResult.rows.length > 0) {
-      console.log(`ℹ️  Attendance already recorded for student ${mapping.full_name} on ${attendanceDate}`);
-      return { success: true, duplicate: true };
+    if (leaveCheck.rows.length > 0) {
+      const leaveType = leaveCheck.rows[0].leave_type;
+      console.log(`ℹ️  Student ${studentName} is on ${leaveType} leave on ${attendanceDate} - Recording as leave`);
+      // Mark as leave status instead of rejecting
+      attendanceStatus = 'leave';
     }
 
-    // 6. Save attendance record
+    // 6. Save attendance record using UPSERT (FIXED: Prevents duplicates even in race conditions)
     const insertResult = await query(
       `INSERT INTO attendance_logs (
         student_id, school_id, device_id, check_in_time, status, date, sms_sent
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *`,
+      ON CONFLICT (student_id, date, school_id)
+      DO UPDATE SET
+        check_in_time = CASE
+          WHEN attendance_logs.check_in_time > EXCLUDED.check_in_time
+          THEN EXCLUDED.check_in_time
+          ELSE attendance_logs.check_in_time
+        END,
+        device_id = EXCLUDED.device_id,
+        status = EXCLUDED.status
+      RETURNING *, (xmax = 0) AS inserted`,
       [studentId, device.school_id, device.id, timestamp, attendanceStatus, attendanceDate, false]
     );
 
-    console.log(`✅ Attendance recorded: ${studentName} - ${attendanceStatus} at ${timestamp}`);
+    const wasInserted = insertResult.rows[0].inserted;
+    const action = wasInserted ? 'recorded' : 'updated (duplicate - keeping earliest time)';
+    console.log(`✅ Attendance ${action}: ${studentName} - ${attendanceStatus} at ${timestamp}`);
 
     return {
       success: true,
+      duplicate: !wasInserted,
       attendance: insertResult.rows[0],
       student: {
         id: studentId,
@@ -129,8 +148,9 @@ function determineStatus(checkInTime, settings) {
     const checkInDate = new Date(checkInTime);
     const checkInMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
 
-    // Parse school start time (e.g., "08:00:00")
-    const [startHour, startMinute] = settings.school_start_time.split(':').map(Number);
+    // Parse school start time (e.g., "08:00:00") with safe fallback
+    const startTime = settings?.school_start_time || '08:00:00';
+    const [startHour, startMinute] = startTime.split(':').map(Number);
     const startMinutes = startHour * 60 + startMinute;
 
     // Calculate difference in minutes

@@ -11,10 +11,15 @@ class DeviceCommand {
    * Queue a command for a device
    * @param {number} deviceId - Device ID
    * @param {string} commandType - Type of command (add_user, delete_user, etc.)
-   * @param {string} commandString - The actual command string
+   * @param {string} commandString - The actual command string (must include C:${id}: prefix)
    * @param {number} priority - Priority (higher = sent first)
+   * @deprecated Use specific methods like queueAddUser() instead - they handle ID properly
    */
   static async queueCommand(deviceId, commandType, commandString, priority = 0) {
+    // ⚠️ WARNING: This method is deprecated because it doesn't ensure proper C:${id}: prefix
+    // Use queueAddUser(), queueDeleteUser(), etc. instead
+    console.warn('⚠️ DEPRECATED: queueCommand() called. Use specific queue methods instead.');
+    
     const result = await query(
       `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
        VALUES ($1, $2, $3, $4, 'pending')
@@ -34,8 +39,27 @@ class DeviceCommand {
    * @param {string} rfidCard - RFID card number
    */
   static async queueAddUser(deviceId, devicePin, studentName, rfidCard) {
-    const commandString = CommandGenerator.addUser(devicePin, studentName, rfidCard);
-    return await this.queueCommand(deviceId, 'add_user', commandString, 10);
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'add_user', 'PLACEHOLDER', 10]
+    );
+    
+    const commandId = result.rows[0].id;
+    
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.addUser(devicePin, studentName, rfidCard, commandId);
+    
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+    
+    console.log(`📋 Command queued: add_user (id=${commandId}) for device ${deviceId}`);
+    return result.rows[0];
   }
 
   /**
@@ -44,8 +68,27 @@ class DeviceCommand {
    * @param {number} devicePin - Student's PIN on this device
    */
   static async queueDeleteUser(deviceId, devicePin) {
-    const commandString = CommandGenerator.deleteUser(devicePin);
-    return await this.queueCommand(deviceId, 'delete_user', commandString, 5);
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'delete_user', 'PLACEHOLDER', 5]
+    );
+    
+    const commandId = result.rows[0].id;
+    
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.deleteUser(devicePin, commandId);
+    
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+    
+    console.log(`📋 Command queued: delete_user (id=${commandId}) for device ${deviceId}`);
+    return result.rows[0];
   }
 
   /**
@@ -53,8 +96,27 @@ class DeviceCommand {
    * @param {number} deviceId - Device ID
    */
   static async queueRestartDevice(deviceId) {
-    const commandString = CommandGenerator.restartDevice();
-    return await this.queueCommand(deviceId, 'restart', commandString, 100);
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'restart', 'PLACEHOLDER', 100]
+    );
+    
+    const commandId = result.rows[0].id;
+    
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.restartDevice(commandId);
+    
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+    
+    console.log(`📋 Command queued: restart (id=${commandId}) for device ${deviceId}`);
+    return result.rows[0];
   }
 
   /**
@@ -62,8 +124,27 @@ class DeviceCommand {
    * @param {number} deviceId - Device ID
    */
   static async queueClearLogs(deviceId) {
-    const commandString = CommandGenerator.clearAttendanceLogs();
-    return await this.queueCommand(deviceId, 'clear_logs', commandString, 50);
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'clear_logs', 'PLACEHOLDER', 50]
+    );
+    
+    const commandId = result.rows[0].id;
+    
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.clearAttendanceLogs(commandId);
+    
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+    
+    console.log(`📋 Command queued: clear_logs (id=${commandId}) for device ${deviceId}`);
+    return result.rows[0];
   }
 
   /**
@@ -159,12 +240,30 @@ class DeviceCommand {
       return null;
     }
 
-    const commandString = CommandGenerator.addUsersBatch(students);
     const commandType = `add_users_batch_${students.length}`;
+    
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, commandType, 'PLACEHOLDER', 10]
+    );
+    
+    const commandId = result.rows[0].id;
+    
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.addUsersBatch(students, commandId);
+    
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
 
-    console.log(`📋 Batched command queued: ${students.length} students for device ${deviceId}`);
+    console.log(`📋 Batched command queued: ${students.length} students (id=${commandId}) for device ${deviceId}`);
 
-    return await this.queueCommand(deviceId, commandType, commandString, 10);
+    return result.rows[0];
   }
 }
 

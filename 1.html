@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Definitive Developer Guide: ZKTeco K40 Pro & Backend Integration</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.7; padding: 40px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 50px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); }
+        h1, h2, h3, h4 { color: #1e293b; font-weight: 700; margin-top: 1.5em; margin-bottom: 0.8em; }
+        h1 { font-size: 2.8rem; text-align: center; border-bottom: 4px solid #3b82f6; padding-bottom: 20px; margin-bottom: 40px; }
+        h2 { font-size: 2rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        h3 { font-size: 1.5rem; }
+        h4 { font-size: 1.2rem; color: #3b82f6; }
+        p { margin-bottom: 1rem; }
+        code { background: #eef2ff; color: #4338ca; padding: 4px 8px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 0.95rem; }
+        .info-box { background: #eff6ff; border-left: 5px solid #3b82f6; padding: 20px; border-radius: 8px; margin: 25px 0; }
+        .info-box.success { background: #f0fdf4; border-color: #10b981; }
+        .info-box.danger { background: #fef2f2; border-color: #ef4444; }
+        .info-box.warning { background: #fffbeb; border-color: #f59e0b; }
+        table { width: 100%; border-collapse: collapse; margin: 25px 0; }
+        th, td { border: 1px solid #e2e8f0; padding: 15px; text-align: left; }
+        th { background: #f8fafc; font-weight: 600; }
+        ul { padding-left: 20px; margin-bottom: 1rem; }
+        li { margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>The Complete Guide to Connecting Our Hardware</h1>
+        
+        <p class="lead" style="text-align: center; font-size: 1.2rem; color: #475569;">This document is the complete technical blueprint for our development team. It explains, from the very beginning, how the physical <strong>ZKTeco K40 Pro</strong> machine works and how our <strong>backend</strong> must be built to communicate with it.</p>
+
+        <section>
+            <h2>Section 1: The Big Picture - How the Machine Talks to Our Server</h2>
+            <p>Imagine the K40 Pro machine at the school is a security guard. Our backend server is the main office. The guard needs to report events (like a student arriving) and also needs to receive new instructions (like a list of new students) from the main office.</p>
+            <p>The machine uses a modern communication method called **ADMS (Push Protocol)**. This simply means that the machine itself will **always start the conversation**. Our server's only job is to listen for the machine's calls and respond correctly.</p>
+            <div class="info-box success">
+                <h4>How ADMS Works (The Guard Analogy)</h4>
+                <ul>
+                    <li>When a student scans their card, the guard (the machine) immediately **calls** the main office (our server) to report it. This is a **"PUSH"** of information.</li>
+                    <li>Every few minutes, the guard (the machine) also calls the main office to ask, "Any new instructions for me?". This is a **"PULL for commands."**</li>
+                </ul>
+                <p>This method is fast, real-time, and can support thousands of schools. We do **not** need any extra hardware like a Raspberry Pi to make this work.</p>
+            </div>
+        </section>
+
+        <section>
+            <h2>Section 2: Security First - The "Secret Handshake"</h2>
+            <p>We cannot allow any random device on the internet to send data to our server. The machine and our server use a "secret handshake" to verify each other. This handshake is the machine's unique **Serial Number (SN)**.</p>
+            <h4>How This Works (Step-by-Step):</h4>
+            <ol>
+                <li><strong>Registration (Our Job):</strong> In our Super Admin Panel, we must create a section to register a new device. We will find the machine's **Serial Number** (on a sticker on the back of the K40 Pro) and save it in our database, linking it to a specific school. This tells our server, "This machine is one of ours; you can trust it."</li>
+                <li><strong>Identification (The Machine's Job):</strong> Every single time the K40 Pro contacts our server, it will automatically include its Serial Number in the URL. For example: <code>/iclock/getrequest?SN=ZK123456789</code>.</li>
+                <li><strong>Verification (The Backend's Job):</strong> Our backend code **must** first check if the `SN` from the URL is in our database of trusted devices. If it is, we process the request. If it's not, we immediately reject it. This is our system's most important security check.</li>
+            </ol>
+        </section>
+
+        <section>
+            <h2>Section 3: The Two "Private Doors" - Our Hardcoded Endpoints</h2>
+            <p>The ZKTeco K40 Pro is programmed at the factory to only "knock" on two specific "doors" (API endpoints) on our server. We **cannot change the names of these doors**. Our backend's job is to build these two exact doors and listen for the machine.</p>
+            <div class="info-box">
+                <p>The two doors we must build are:</p>
+                <ul>
+                    <li><strong>Door #1:</strong> <code>POST /iclock/cdata</code> — The machine uses this door to send us new information (like attendance logs).</li>
+                    <li><strong>Door #2:</strong> <code>GET /iclock/getrequest</code> — The machine uses this door to ask us for new instructions.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h2>Section 4: A Detailed Look at Door #1 - Receiving Information at <code>/iclock/cdata</code></h2>
+            <p>This is how we get real-time attendance data from the machine.</p>
+            <h4>The Process:</h4>
+            <ol>
+                <li>A student scans their card at the K40 Pro.</li>
+                <li>The machine immediately sends an `HTTP POST` request to our server at the address <code>https://our-api.com/iclock/cdata?SN=...</code>.</li>
+            </ol>
+            <h4>The Data Format (This is the Most Critical Part for Developers)</h4>
+            <p>The information sent by the machine is **NOT JSON**. It is a single string of plain text. Each piece of information is separated by a special invisible character called a **tab character (`\t`)**.</p>
+            <div class="info-box">
+                <p><strong>Example of the raw text our server will receive:</strong></p>
+                <pre><code>101\t2025-10-17 09:02:15\t1\t15\t0\t0</code></pre>
+                <h4>Developer's Task: Understanding the Data</h4>
+                <p>Our backend code must be programmed to take this string and split it by the tab character to understand its meaning.</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>Field Name</th>
+                            <th>Example</th>
+                            <th>What it Means for Our System</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>0</td>
+                            <td>User PIN</td>
+                            <td><code>101</code></td>
+                            <td>This is the student's unique ID *on that machine*. We will use this number to find the correct student in our main database.</td>
+                        </tr>
+                        <tr>
+                            <td>1</td>
+                            <td>Timestamp</td>
+                            <td><code>2025-10-17 09:02:15</code></td>
+                            <td>This is the exact time the student scanned their card. We will use this to determine if the student is on time, late, or absent.</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Status Code</td>
+                            <td><code>1</code></td>
+                            <td>This tells us the type of scan (for example, Check-in, Check-out, etc.).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="info-box warning">
+                <strong>Mandatory Server Response:</strong> After our backend successfully receives and saves this information, it **must** reply with a plain text response containing only the word <code>OK</code>. If we fail to send this "OK," the machine will think the information was lost in transit and will try to send it again, which would create duplicate attendance records.
+            </div>
+        </section>
+        
+        <section>
+            <h2>Section 5: A Detailed Look at Door #2 - Sending Instructions via <code>/iclock/getrequest</code></h2>
+            <p>This is how we achieve two-way communication and remotely control the machine from our dashboard.</p>
+            <h4>The Process:</h4>
+            <ol>
+                <li>The K40 Pro is programmed to automatically send an `HTTP GET` request to <code>https://our-api.com/iclock/getrequest?SN=...</code> every 30-60 seconds. This is its regular "check-in."</li>
+                <li>Our backend receives this check-in and immediately looks in our database to see if we have any new instructions for that specific device.</li>
+            </ol>
+            <h4>The Server's Response (This is the "Brain" of the System)</h4>
+            <p>Our server's response will be one of two things:</p>
+            <ul>
+                <li><strong>If there are no new instructions:</strong> Our server must simply reply with the word <code>OK</code>.</li>
+                <li><strong>If there IS a new instruction:</strong> Our server must reply with a specially formatted command string that acts as an order for the machine.</li>
+            </ul>
+            <h4>The Command Format (The Language the Machine Understands)</h4>
+            <p>All commands we send must follow a strict format: <code>C:&lt;CommandID&gt;:&lt;CommandBody&gt;</code>.</p>
+            <div class="info-box">
+                <h4>Example 1: The Command to Add or Update a User</h4>
+                <p>This is the command we will use for our "Bulk Import" feature. The different pieces of user information **must** be separated by a **tab character (`\t`)**.</p>
+                <pre><code>C:295:DATA UPDATE user Pin=101\tName=Ali Khan\tCard=1234567890\tPrivilege=0</code></pre>
+                <ul>
+                    <li>This tells the machine: "Update your user data. For the user with ID 101, set their name to 'Ali Khan' and their card number to '1234567890'."</li>
+                </ul>
+                
+                <h4 style="margin-top:20px;">Example 2: The Command to Delete a User</h4>
+                <p>This command tells the machine to remove a user from its memory.</p>
+                <pre><code>C:337:DATA DELETE user Pin=101</code></pre>
+                <ul>
+                    <li>This tells the machine: "Delete the user data for the user with ID 101."</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h2>Section 6: Putting It All Together - The Bulk Import Workflow</h2>
+            <p>This is a real-world example of how we will add 500 new students to a machine from our dashboard, showing how all these pieces work together.</p>
+            <ol>
+                <li><strong>Admin's Action:</strong> The school admin logs into our web dashboard and uploads a CSV file containing the information for 500 new students.</li>
+                <li><strong>Backend's First Job (Preparation):</strong> Our backend saves all 500 students to our main database. Then, it creates 500 "Add User" command strings (like the example above) and saves them in a "command queue" table in our database, marking them as "pending" for that school's device.</li>
+                <li><strong>The Machine Checks In (Automatic):</strong> A few seconds later, the K40 Pro at the school automatically calls our `/iclock/getrequest` endpoint.</li>
+                <li><strong>Backend's Second Job (Giving Orders):</strong> Our backend sees the 500 pending commands. It takes the very first command from the queue, sends it as the response to the machine, and marks that command in our database as "sent."</li>
+                <li><strong>The Machine Obeys:</strong> The K40 Pro receives the command string for the first student and adds them to its internal memory.</li>
+                <li><strong>The Cycle Repeats (Automatic):</strong> About a minute later, the machine calls `/iclock/getrequest` again. Our backend sees there are still 499 commands pending. It sends the next one. This cycle continues automatically in the background, one command at a time, until the queue is empty and all 500 students are registered on the device.</li>
+            </ol>
+            <div class="info-box success">
+                This is a powerful and scalable system. The school admin only has to click "upload" once. The backend and the hardware will handle the entire synchronization process automatically without any further human intervention.
+            </div>
+        </section>
+
+    </div>
+
+</body>
+</html>

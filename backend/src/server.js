@@ -11,9 +11,11 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth.routes');
 const superAdminRoutes = require('./routes/superAdmin.routes');
 const schoolRoutes = require('./routes/school.routes');
+const teacherRoutes = require('./routes/teacher.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
 const deviceSyncRoutes = require('./routes/deviceSync.routes');
 const holidayRoutes = require('./routes/holiday.routes');
+const leaveRoutes = require('./routes/leave.routes');
 const iclockRoutes = require('./routes/iclock');
 
 // Import middleware
@@ -39,9 +41,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing middleware with size limits to prevent DOS attacks
+app.use(express.json({ limit: '1mb' })); // Limit JSON payload to 1MB
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Special middleware for ZKTeco device endpoints (they send plain text)
 app.use('/iclock', express.text({ type: 'text/plain' }));
@@ -57,11 +59,15 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Rate limiting
+// Rate limiting - Production-ready for 1000+ schools
+// Very high limit to handle development re-renders and production load
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // Limit each IP to 100 requests per windowMs
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // 1000 requests per minute (very high for development + production)
   message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => process.env.NODE_ENV === 'development', // Skip rate limiting in development
 });
 app.use('/api/', limiter);
 
@@ -93,8 +99,11 @@ app.post('/', (req, res) => {
 // API routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/super`, superAdminRoutes);
-app.use(`/api/${API_VERSION}/school`, schoolRoutes);
+app.use(`/api/${API_VERSION}/teacher`, teacherRoutes);
+// IMPORTANT: Mount specific /school/* routes BEFORE /school to prevent route conflicts
 app.use(`/api/${API_VERSION}/school/holidays`, holidayRoutes);
+app.use(`/api/${API_VERSION}/school/leaves`, leaveRoutes);
+app.use(`/api/${API_VERSION}/school`, schoolRoutes);
 app.use(`/api/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/api/${API_VERSION}/device/sync`, deviceSyncRoutes);
 
@@ -111,7 +120,18 @@ app.use(errorHandler);
  * SERVER INITIALIZATION
  */
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
+
+// Validate required environment variables
+const requiredEnvVars = ['DB_PASSWORD', 'JWT_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  console.error('Please set these variables in your .env file');
+  process.exit(1);
+}
+
 // Test database connection before starting server
 const startServer = async () => {
   try {

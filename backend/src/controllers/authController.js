@@ -103,6 +103,7 @@ const refreshToken = async (req, res) => {
 /**
  * Get current user info
  * GET /api/v1/auth/me
+ * Enhanced: Returns teacher assignments if user is a teacher
  */
 const getMe = async (req, res) => {
   try {
@@ -114,6 +115,29 @@ const getMe = async (req, res) => {
 
     if (!user) {
       return sendError(res, 'User not found', 404);
+    }
+
+    // If user is a teacher, include their teacher profile and assignments
+    if (user.role === 'teacher') {
+      const Teacher = require('../models/Teacher');
+      const { query } = require('../config/database');
+      
+      // Get teacher record by user_id
+      const teacherResult = await query(
+        'SELECT id FROM teachers WHERE user_id = $1 AND is_active = TRUE',
+        [user.id]
+      );
+      
+      if (teacherResult.rows.length > 0) {
+        const teacherId = teacherResult.rows[0].id;
+        
+        // Get teacher assignments
+        const assignments = await Teacher.getAssignments(teacherId, '2025-2026');
+        
+        // Add teacher data to response
+        user.teacher_id = teacherId;
+        user.assignments = assignments;
+      }
     }
 
     sendSuccess(res, user, 'User retrieved successfully');

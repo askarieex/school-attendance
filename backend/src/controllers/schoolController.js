@@ -5,6 +5,7 @@ const Device = require('../models/Device');
 const DeviceCommand = require('../models/DeviceCommand');
 const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
+const { getCurrentDateIST, getCurrentTimeIST, istDateTimeToUTC } = require('../utils/timezone');
 
 /**
  * STUDENT MANAGEMENT
@@ -13,13 +14,25 @@ const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 // Get all students for the school
 const getStudents = async (req, res) => {
   try {
-    const { page = 1, limit = 10, grade, status, search } = req.query;
+    const { page = 1, grade, status, search, classId, sectionId } = req.query;
+    // Enforce maximum limit to prevent DOS attacks
+    const limit = Math.min(parseInt(req.query.limit) || 10, 1000);
     const schoolId = req.tenantSchoolId; // From multi-tenancy middleware
+
+    console.log('📥 getStudents query params:', { grade, status, search, classId, sectionId, limit });
 
     const filters = {};
     if (grade) filters.grade = grade;
     if (status) filters.isActive = status === 'active';
     if (search) filters.search = search;
+    if (classId) {
+      filters.classId = parseInt(classId);
+      console.log('✅ Filtering by classId:', filters.classId);
+    }
+    if (sectionId) {
+      filters.sectionId = parseInt(sectionId);
+      console.log('✅ Filtering by sectionId:', filters.sectionId);
+    }
 
     const result = await Student.findAll(
       schoolId,
@@ -27,6 +40,8 @@ const getStudents = async (req, res) => {
       parseInt(limit),
       filters
     );
+
+    console.log(`📊 Found ${result.total} students with filters:`, filters);
 
     sendPaginated(res, result.students, page, limit, result.total);
   } catch (error) {
@@ -44,6 +59,27 @@ const createStudent = async (req, res) => {
     // Validate required fields
     if (!studentData.fullName) {
       return sendError(res, 'Student full name is required', 400);
+    }
+
+    // Check for duplicate roll number in the same class/section
+    if (studentData.rollNumber && studentData.classId) {
+      const duplicateCheck = await query(
+        `SELECT id, full_name FROM students 
+         WHERE roll_number = $1 
+         AND class_id = $2 
+         AND section_id = $3 
+         AND school_id = $4 
+         AND is_active = TRUE`,
+        [studentData.rollNumber, studentData.classId, studentData.sectionId || null, schoolId]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        return sendError(
+          res, 
+          `Roll number ${studentData.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`, 
+          409
+        );
+      }
     }
 
     const student = await Student.create(studentData, schoolId);
@@ -139,6 +175,28 @@ const updateStudent = async (req, res) => {
     // Verify student belongs to this school
     if (student.school_id !== req.tenantSchoolId) {
       return sendError(res, 'Access denied', 403);
+    }
+
+    // Check for duplicate roll number in the same class/section (if updating roll number)
+    if (updates.rollNumber && updates.classId) {
+      const duplicateCheck = await query(
+        `SELECT id, full_name FROM students 
+         WHERE roll_number = $1 
+         AND class_id = $2 
+         AND section_id = $3 
+         AND school_id = $4 
+         AND id != $5
+         AND is_active = TRUE`,
+        [updates.rollNumber, updates.classId, updates.sectionId || student.section_id || null, req.tenantSchoolId, id]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        return sendError(
+          res, 
+          `Roll number ${updates.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`, 
+          409
+        );
+      }
     }
 
     const updatedStudent = await Student.update(id, updates);
@@ -315,7 +373,8 @@ const getAbsentStudents = async (req, res) => {
   try {
     const { date } = req.query;
     const schoolId = req.tenantSchoolId;
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    // Use IST timezone for accurate date in India
+    const targetDate = date || getCurrentDateIST();
 
     const absentStudents = await AttendanceLog.getAbsentStudents(schoolId, targetDate);
 
@@ -329,7 +388,9 @@ const getAbsentStudents = async (req, res) => {
 // Get attendance logs with pagination and filters
 const getAttendanceLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 20, date, status, search } = req.query;
+    const { page = 1, date, status, search } = req.query;
+    // Enforce maximum limit to prevent DOS attacks
+    const limit = Math.min(parseInt(req.query.limit) || 20, 1000);
     const schoolId = req.tenantSchoolId;
 
     const filters = {};
@@ -355,7 +416,8 @@ const getAttendanceLogs = async (req, res) => {
 const getTodayAttendance = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
-    const today = new Date().toISOString().split('T')[0];
+    // Use IST timezone for accurate date in India
+    const today = getCurrentDateIST();
 
     const result = await AttendanceLog.findAll(
       schoolId,
@@ -381,6 +443,187 @@ const getTodayAttendanceStats = async (req, res) => {
   } catch (error) {
     console.error('Get today attendance stats error:', error);
     sendError(res, 'Failed to retrieve today\'s attendance statistics', 500);
+  }
+};
+
+// Get attendance logs for date range (BATCH API for performance)
+const getAttendanceRange = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const schoolId = req.tenantSchoolId;
+
+    if (!startDate || !endDate) {
+      return sendError(res, 'Start date and end date are required', 400);
+    }
+
+    const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
+
+    sendSuccess(res, logs, 'Attendance logs retrieved successfully');
+  } catch (error) {
+    console.error('Get attendance range error:', error);
+    sendError(res, 'Failed to retrieve attendance logs', 500);
+  }
+};
+
+/**
+ * MANUAL ATTENDANCE
+ */
+
+// Mark manual attendance (for admin to manually mark student attendance)
+const markManualAttendance = async (req, res) => {
+  try {
+    const { studentId, date, checkInTime, status, notes, forceUpdate } = req.body;
+    const schoolId = req.tenantSchoolId;
+
+    // Validate inputs
+    if (!studentId || !date) {
+      return sendError(res, 'Student ID and date are required', 400);
+    }
+
+    // Verify student belongs to this school
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return sendError(res, 'Student not found', 404);
+    }
+    if (student.school_id !== schoolId) {
+      return sendError(res, 'Access denied', 403);
+    }
+
+    // Check if attendance already exists for this date
+    const existing = await AttendanceLog.existsToday(studentId, date);
+
+    if (existing && !forceUpdate) {
+      return sendError(res, 'Attendance already marked for this date', 409);
+    }
+
+    // If updating existing attendance
+    if (existing && forceUpdate) {
+      console.log(`✏️ Updating existing attendance for student ${studentId} on ${date} from ${existing.status} to ${status}`);
+    }
+
+    // Get school settings to determine if late
+    const settings = await SchoolSettings.getOrCreate(schoolId);
+
+    // Parse check-in time (if provided, otherwise use default 9 AM)
+    const timeToUse = checkInTime || '09:00:00';
+    const checkInDateTime = new Date(`${date}T${timeToUse}`);
+
+    // AUTO-CALCULATE STATUS based on school settings
+    let calculatedStatus = status || 'present'; // Use provided status or default to present
+
+    console.log(`📝 Marking attendance: student=${studentId}, date=${date}, checkInTime=${timeToUse}, initialStatus=${calculatedStatus}`);
+
+    // ALWAYS auto-calculate if marking as "present" (regardless of what user selected)
+    // Only skip auto-calculation for "absent" and "leave"
+    if ((calculatedStatus === 'present' || !status) && settings.school_open_time && settings.late_threshold_minutes) {
+      // Parse times
+      const [startHour, startMin] = settings.school_open_time.split(':').map(Number);
+      const [checkHour, checkMin, checkSec = 0] = timeToUse.split(':').map(Number);
+
+      const startMinutes = startHour * 60 + startMin;
+      const checkMinutes = checkHour * 60 + checkMin;
+
+      // Calculate difference in minutes
+      const diffMinutes = checkMinutes - startMinutes;
+
+      console.log(`⏰ Time calculation: school_start=${startMinutes}min, check_in=${checkMinutes}min, diff=${diffMinutes}min, threshold=${settings.late_threshold_minutes}min`);
+
+      // If arrived after threshold, mark as late
+      if (diffMinutes > settings.late_threshold_minutes) {
+        calculatedStatus = 'late';
+        console.log(`🕐 Auto-calculated status as 'late' (arrived ${diffMinutes} min after start time, threshold: ${settings.late_threshold_minutes} min)`);
+      } else if (diffMinutes < 0) {
+        // Arrived before school starts (negative difference)
+        calculatedStatus = 'present';
+        console.log(`⚠️ Arrived before school starts (${Math.abs(diffMinutes)} min early), marking as 'present'`);
+      } else {
+        calculatedStatus = 'present';
+        console.log(`✅ Auto-calculated status as 'present' (arrived on time, ${diffMinutes} min after start)`);
+      }
+    } else if (calculatedStatus === 'absent') {
+      console.log(`❌ Student is absent`);
+    } else if (calculatedStatus === 'leave') {
+      console.log(`🏖️ Student is on leave`);
+    } else {
+      console.log(`ℹ️ Using provided status: ${calculatedStatus}`);
+    }
+
+    let attendanceLog;
+
+    // UPDATE existing attendance if forceUpdate is true
+    if (existing && forceUpdate) {
+      // Update the existing record using raw SQL
+      const { query } = require('../config/database');
+      
+      const updateResult = await query(
+        `UPDATE attendance_logs 
+         SET status = $1, 
+             check_in_time = $2
+         WHERE student_id = $3 
+           AND date = $4 
+           AND school_id = $5
+         RETURNING *`,
+        [calculatedStatus, checkInDateTime, studentId, date, schoolId]
+      );
+
+      attendanceLog = updateResult.rows[0];
+
+      // Update notes if provided
+      if (notes) {
+        await query(
+          `UPDATE attendance_logs SET notes = $1 WHERE id = $2`,
+          [notes, attendanceLog.id]
+        );
+        attendanceLog.notes = notes;
+      }
+
+      console.log(`✅ Updated attendance: ${existing.status} → ${calculatedStatus}`);
+
+      sendSuccess(
+        res,
+        {
+          ...attendanceLog,
+          isUpdate: true,
+          previousStatus: existing.status,
+          autoCalculated: calculatedStatus !== status,
+          originalStatus: status,
+          finalStatus: calculatedStatus
+        },
+        'Attendance updated successfully',
+        200
+      );
+    } else {
+      // CREATE new attendance log
+      attendanceLog = await AttendanceLog.create({
+        studentId: studentId,
+        schoolId: schoolId,
+        deviceId: null, // Manual entry, no device
+        checkInTime: checkInDateTime,
+        status: calculatedStatus, // Use auto-calculated status
+        date: date,
+      });
+
+      // Update notes if provided
+      if (notes) {
+        await AttendanceLog.updateNotes(attendanceLog.id, notes);
+      }
+
+      sendSuccess(
+        res,
+        {
+          ...attendanceLog,
+          isUpdate: false,
+          autoCalculated: calculatedStatus !== status, // Let frontend know if status was auto-calculated
+          originalStatus: status,
+          finalStatus: calculatedStatus
+        },
+        'Manual attendance marked successfully',
+        201
+      );
+    }
+  } catch (error) {
+    console.error('Mark manual attendance error:', error);
+    sendError(res, 'Failed to mark manual attendance', 500);
   }
 };
 
@@ -453,6 +696,47 @@ const updateSettings = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
     const updates = req.body;
+
+    // VALIDATION: Prevent wrong school timing
+    if (updates.school_open_time) {
+      const timeStr = updates.school_open_time;
+      const [hours] = timeStr.split(':').map(Number);
+      
+      // School should start in morning (before 12 PM)
+      if (hours >= 12) {
+        return sendError(res, 'School start time must be in the morning (before 12:00 PM). Did you mean 09:00 instead of 21:00?', 400);
+      }
+      
+      // School should start after 6 AM (reasonable)
+      if (hours < 6) {
+        return sendError(res, 'School start time should be after 6:00 AM', 400);
+      }
+      
+      console.log(`✅ School start time validated: ${timeStr} (${hours}:00 AM)`);
+    }
+    
+    // VALIDATION: Late threshold should be reasonable
+    if (updates.late_threshold_minutes !== undefined) {
+      const threshold = parseInt(updates.late_threshold_minutes);
+      
+      if (threshold < 0 || threshold > 60) {
+        return sendError(res, 'Late threshold must be between 0 and 60 minutes', 400);
+      }
+      
+      console.log(`✅ Late threshold validated: ${threshold} minutes`);
+    }
+    
+    // VALIDATION: School close time should be in afternoon/evening
+    if (updates.school_close_time) {
+      const timeStr = updates.school_close_time;
+      const [hours] = timeStr.split(':').map(Number);
+      
+      if (hours < 12) {
+        return sendError(res, 'School close time should be in afternoon/evening (after 12:00 PM)', 400);
+      }
+      
+      console.log(`✅ School close time validated: ${timeStr}`);
+    }
 
     const settings = await SchoolSettings.update(schoolId, updates);
 
@@ -768,6 +1052,10 @@ module.exports = {
   getAttendanceLogs,
   getTodayAttendance,
   getTodayAttendanceStats,
+  getAttendanceRange,
+
+  // Manual Attendance
+  markManualAttendance,
 
   // Reports
   getAttendanceReport,

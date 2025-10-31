@@ -35,35 +35,80 @@ class SchoolSettings {
     const values = [];
     let paramCount = 0;
 
+    console.log('📝 Updating school settings for school', schoolId, 'with data:', updates);
+
     const fieldMapping = {
-      schoolStartTime: 'school_start_time',
-      lateThresholdMin: 'late_threshold_min',
-      smsEnabled: 'sms_enabled',
-      academicYear: 'academic_year',
+      // School timing fields
+      school_open_time: 'school_open_time',
+      school_close_time: 'school_close_time',
+      late_threshold_minutes: 'late_threshold_minutes',
+      
+      // Break times
+      first_break_start: 'first_break_start',
+      first_break_end: 'first_break_end',
+      lunch_break_start: 'lunch_break_start',
+      lunch_break_end: 'lunch_break_end',
+      
+      // Check-in settings
+      allow_early_checkin: 'allow_early_checkin',
+      allow_late_checkin: 'allow_late_checkin',
+      early_checkin_message: 'early_checkin_message',
+      late_checkin_message: 'late_checkin_message',
+      too_late_checkin_message: 'too_late_checkin_message',
+      
+      // SMS settings
+      sms_enabled: 'sms_enabled',
+      sms_provider: 'sms_provider',
+      sms_api_key: 'sms_api_key',
+      sms_balance: 'sms_balance',
+      
+      // Other
+      timezone: 'timezone',
+      academic_year: 'academic_year',
     };
 
     Object.keys(updates).forEach((key) => {
       if (updates[key] !== undefined) {
         paramCount++;
-        const dbField = fieldMapping[key] || key;
+        const dbField = fieldMapping[key];
+        
+        if (!dbField) {
+          console.warn(`⚠️ Skipping unknown field: ${key}`);
+          paramCount--; // Don't increment if skipping
+          return;
+        }
+        
         fields.push(`${dbField} = $${paramCount}`);
         values.push(updates[key]);
+        console.log(`  ✅ Mapping ${key} -> ${dbField} = ${updates[key]}`);
       }
     });
 
     if (fields.length === 0) {
-      throw new Error('No fields to update');
+      console.warn('⚠️ No valid fields to update');
+      // Just return current settings instead of throwing error
+      return await this.findBySchool(schoolId);
     }
 
     values.push(schoolId);
-    const result = await query(
-      `UPDATE school_settings
+    
+    const sql = `UPDATE school_settings
        SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
        WHERE school_id = $${paramCount + 1}
-       RETURNING *`,
-      values
-    );
-
+       RETURNING *`;
+    
+    console.log('📤 Executing SQL:', sql);
+    console.log('📤 With values:', values);
+    
+    const result = await query(sql, values);
+    
+    if (result.rows.length === 0) {
+      console.log('⚠️ No settings found, creating new...');
+      await this.create(schoolId);
+      return await this.update(schoolId, updates);
+    }
+    
+    console.log('✅ Settings updated successfully:', result.rows[0]);
     return result.rows[0];
   }
 

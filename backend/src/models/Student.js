@@ -105,6 +105,18 @@ static async create(studentData, schoolId) {
     const params = [schoolId];
     let paramCount = 1;
 
+    // Filter by active status (default to TRUE to show only active students)
+    if (filters.isActive !== undefined) {
+      paramCount++;
+      whereClause += ` AND s.is_active = $${paramCount}`;
+      params.push(filters.isActive);
+    } else {
+      // By default, only show active students
+      paramCount++;
+      whereClause += ` AND s.is_active = $${paramCount}`;
+      params.push(true);
+    }
+
     // Filter by class
     if (filters.classId) {
       paramCount++;
@@ -117,13 +129,6 @@ static async create(studentData, schoolId) {
       paramCount++;
       whereClause += ` AND s.section_id = $${paramCount}`;
       params.push(filters.sectionId);
-    }
-
-    // Filter by active status
-    if (filters.isActive !== undefined) {
-      paramCount++;
-      whereClause += ` AND s.is_active = $${paramCount}`;
-      params.push(filters.isActive);
     }
 
     // Search by name or RFID
@@ -151,7 +156,13 @@ static async create(studentData, schoolId) {
        LEFT JOIN classes c ON s.class_id = c.id
        LEFT JOIN sections sec ON s.section_id = sec.id
        ${whereClause}
-       ORDER BY s.full_name ASC
+       ORDER BY c.class_name ASC, sec.section_name ASC, 
+                CASE WHEN s.roll_number ~ '^[0-9]+$' 
+                     THEN CAST(s.roll_number AS INTEGER) 
+                     ELSE 999999 
+                END ASC, 
+                s.roll_number ASC, 
+                s.full_name ASC
        LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
       params
     );
@@ -253,9 +264,9 @@ static async create(studentData, schoolId) {
     const attendanceResult = await query(
       `SELECT * FROM attendance_logs
        WHERE student_id = $1
-       AND date >= CURRENT_DATE - INTERVAL '${days} days'
-       ORDER BY date DESC, time DESC`,
-      [id]
+       AND date >= CURRENT_DATE - $2 * INTERVAL '1 day'
+       ORDER BY date DESC, check_in_time DESC`,
+      [id, days]
     );
 
     return {
@@ -276,7 +287,12 @@ static async create(studentData, schoolId) {
        JOIN classes c ON s.class_id = c.id
        JOIN sections sec ON s.section_id = sec.id
        WHERE s.section_id = $1 AND s.is_active = TRUE
-       ORDER BY s.roll_number, s.full_name`,
+       ORDER BY CASE WHEN s.roll_number ~ '^[0-9]+$' 
+                     THEN CAST(s.roll_number AS INTEGER) 
+                     ELSE 999999 
+                END ASC, 
+                s.roll_number ASC, 
+                s.full_name ASC`,
       [sectionId]
     );
 

@@ -32,16 +32,20 @@ class Teacher {
 
     const userId = userResult.rows[0].id;
 
+    // Generate unique teacher code
+    const teacherCode = `TCH-${schoolId}-${Date.now().toString(36).toUpperCase()}`;
+
     // Create teacher profile
     const teacherResult = await query(
       `INSERT INTO teachers (
-        user_id, school_id, phone, date_of_birth, date_of_joining,
+        user_id, school_id, teacher_code, phone, date_of_birth, date_of_joining,
         subject_specialization, qualification, address, emergency_contact
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         userId,
         schoolId,
+        teacherCode,
         phone,
         dateOfBirth,
         dateOfJoining,
@@ -104,6 +108,7 @@ class Teacher {
         (
           SELECT json_agg(
             json_build_object(
+              'id', tca.id,
               'section_id', tca.section_id,
               'class_name', c.class_name,
               'section_name', s.section_name,
@@ -271,6 +276,16 @@ class Teacher {
 
     // If form teacher, update sections table with user_id (not teacher_id)
     if (isFormTeacher) {
+      // Check if section already has a form teacher
+      const existingFormTeacher = await query(
+        'SELECT form_teacher_id FROM sections WHERE id = $1',
+        [sectionId]
+      );
+
+      if (existingFormTeacher.rows[0]?.form_teacher_id) {
+        throw new Error('This section already has a form teacher. Please remove the existing form teacher first.');
+      }
+
       // Get the user_id for this teacher
       const teacherResult = await query(
         'SELECT user_id FROM teachers WHERE id = $1',

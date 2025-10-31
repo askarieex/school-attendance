@@ -270,6 +270,36 @@ class AttendanceLog {
   }
 
   /**
+   * Get attendance logs for a date range (BATCH API for performance)
+   * This replaces the need for 31 separate API calls
+   */
+  static async getLogsForDateRange(schoolId, startDate, endDate) {
+    const result = await query(
+      `SELECT
+        al.id,
+        al.student_id,
+        al.date,
+        al.check_in_time,
+        NULL as check_out_time,
+        al.status,
+        al.created_at as timestamp,
+        s.full_name as student_name,
+        s.rfid_card_id as rfid_uid,
+        s.grade,
+        d.device_name
+       FROM attendance_logs al
+       JOIN students s ON al.student_id = s.id
+       LEFT JOIN devices d ON al.device_id = d.id
+       WHERE al.school_id = $1
+       AND al.date BETWEEN $2 AND $3
+       ORDER BY al.date DESC, al.check_in_time DESC`,
+      [schoolId, startDate, endDate]
+    );
+
+    return result.rows;
+  }
+
+  /**
    * Get attendance statistics for date range (for analytics)
    */
   static async getAnalytics(schoolId, startDate, endDate) {

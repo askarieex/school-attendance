@@ -2,7 +2,7 @@ const { sendError } = require('../utils/response');
 
 /**
  * Multi-tenancy middleware
- * Ensures school admins can only access their own school's data
+ * Ensures school admins and teachers can only access their own school's data
  *
  * This is THE MOST CRITICAL security middleware!
  * It automatically filters all database queries by school_id
@@ -18,6 +18,17 @@ const enforceSchoolTenancy = (req, res, next) => {
   if (req.user.role === 'school_admin') {
     if (!req.user.schoolId) {
       return sendError(res, 'Invalid school admin account - no school assigned', 403);
+    }
+
+    // Attach school_id to request for use in controllers/models
+    req.tenantSchoolId = req.user.schoolId;
+    return next();
+  }
+
+  // For teachers, enforce school_id filtering
+  if (req.user.role === 'teacher') {
+    if (!req.user.schoolId) {
+      return sendError(res, 'Invalid teacher account - no school assigned', 403);
     }
 
     // Attach school_id to request for use in controllers/models

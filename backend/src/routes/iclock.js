@@ -9,11 +9,13 @@ const { receiveAttendanceData, sendCommands, receiveCommandConfirmation } = requ
  */
 
 /**
- * POST /iclock/cdata
- * Receives attendance data from devices
+ * GET/POST /iclock/cdata
+ * - GET with ?options=all -> handshake (device requests configuration)
+ * - POST with attendance data -> receives attendance logs
  * Query param: SN (serial number)
- * Body: Plain text, tab-separated attendance logs
+ * Body: Plain text, tab-separated attendance logs (POST only)
  */
+router.get('/cdata', deviceAuth, receiveAttendanceData);
 router.post('/cdata', deviceAuth, receiveAttendanceData);
 
 /**
