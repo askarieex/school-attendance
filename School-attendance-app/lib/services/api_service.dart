@@ -2,18 +2,29 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 
-/// API Service - Handles all HTTP requests
+/// API Service - Handles all HTTP requests with caching
 class ApiService {
   String? _accessToken;
-  
+
+  // ✅ PERFORMANCE: Add HTTP cache (30 second TTL)
+  final Map<String, _CacheEntry> _cache = {};
+  static const _cacheDuration = Duration(seconds: 30);
+
   // Set token after login
   void setToken(String token) {
     _accessToken = token;
   }
-  
+
   // Clear token on logout
   void clearToken() {
     _accessToken = null;
+    _cache.clear(); // Clear cache on logout
+  }
+
+  // Clear cache manually if needed
+  void clearCache() {
+    _cache.clear();
+    print('🧹 Cache cleared');
   }
   
   // Get headers with or without auth token
@@ -56,29 +67,56 @@ class ApiService {
     }
   }
   
-  // GET request
+  // GET request with caching
   Future<Map<String, dynamic>> get(
     String endpoint, {
     Map<String, String>? queryParams,
     bool requiresAuth = true,
+    bool useCache = true, // ✅ Option to disable cache for specific requests
   }) async {
     try {
       var url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
-      
+
       if (queryParams != null) {
         url = url.replace(queryParameters: queryParams);
       }
-      
+
+      final cacheKey = url.toString();
+
+      // ✅ PERFORMANCE: Check cache first
+      if (useCache && _cache.containsKey(cacheKey)) {
+        final entry = _cache[cacheKey]!;
+        if (DateTime.now().isBefore(entry.expiresAt)) {
+          print('⚡ Cache HIT: $url');
+          return entry.data;
+        } else {
+          // Cache expired, remove it
+          _cache.remove(cacheKey);
+          print('🕐 Cache EXPIRED: $url');
+        }
+      }
+
       print('📤 GET: $url');
-      
+
       final response = await http.get(
         url,
         headers: _getHeaders(requiresAuth: requiresAuth),
       ).timeout(ApiConfig.receiveTimeout);
-      
+
       print('📥 Response: ${response.statusCode}');
-      
-      return _handleResponse(response);
+
+      final data = _handleResponse(response);
+
+      // ✅ PERFORMANCE: Cache successful GET requests
+      if (useCache && response.statusCode >= 200 && response.statusCode < 300) {
+        _cache[cacheKey] = _CacheEntry(
+          data: data,
+          expiresAt: DateTime.now().add(_cacheDuration),
+        );
+        print('💾 Cached: $url (TTL: ${_cacheDuration.inSeconds}s)');
+      }
+
+      return data;
     } catch (e) {
       print('❌ API Error: $e');
       throw ApiException('Network error: $e');
@@ -159,4 +197,15 @@ class NotFoundException extends ApiException {
 
 class ValidationException extends ApiException {
   ValidationException(String message) : super(message);
+}
+
+// ✅ Cache entry with expiration
+class _CacheEntry {
+  final Map<String, dynamic> data;
+  final DateTime expiresAt;
+
+  _CacheEntry({
+    required this.data,
+    required this.expiresAt,
+  });
 }

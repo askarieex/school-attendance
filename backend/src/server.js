@@ -52,6 +52,10 @@ app.use('/iclock', express.text({ type: '*/*' })); // Also accept any content ty
 // Compression middleware
 app.use(compression());
 
+// 🖼️ Serve static files (student photos)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Logging middleware
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
@@ -59,17 +63,50 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Rate limiting - Production-ready for 1000+ schools
-// Very high limit to handle development re-renders and production load
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minute window
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // 1000 requests per minute (very high for development + production)
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  skip: (req) => process.env.NODE_ENV === 'development', // Skip rate limiting in development
+// 🔒 IMPROVED: Rate limiting - Protection against DOS attacks
+// Separate limits for API endpoints vs device endpoints
+
+// API rate limiting (for dashboard/admin)
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // 100 req/min in prod, 1000 in dev
+  message: {
+    success: false,
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: 60
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development'
 });
-app.use('/api/', limiter);
+
+// Strict rate limiting for auth endpoints (prevent brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 failed login attempts per 15 minutes
+  message: {
+    success: false,
+    error: 'Too many login attempts from this IP, please try again after 15 minutes.',
+    retryAfter: 900
+  },
+  skipSuccessfulRequests: true, // Don't count successful logins
+  standardHeaders: true
+});
+
+// Device rate limiting (more lenient for biometric devices)
+const deviceLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 500, // 500 req/min (for bulk attendance uploads)
+  message: 'ERROR: Too many requests',
+  standardHeaders: false, // Devices don't understand these headers
+  skip: (req) => process.env.NODE_ENV === 'development'
+});
+
+// Apply rate limiters
+app.use('/api/', apiLimiter);
+app.use('/api/*/auth/login', authLimiter);
+app.use('/api/*/auth/refresh', authLimiter);
+app.use('/iclock/', deviceLimiter);
 
 /**
  * ROUTES
@@ -139,11 +176,48 @@ const startServer = async () => {
     await pool.query('SELECT NOW()');
     console.log('✅ Database connection successful');
 
+    // Create HTTP server
+    const http = require('http');
+    const server = http.createServer(app);
+
+    // Initialize Socket.io
+    const { Server } = require('socket.io');
+    const io = new Server(server, {
+      cors: {
+        origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:3001'],
+        methods: ['GET', 'POST'],
+        credentials: true
+      },
+      path: '/socket.io/'
+    });
+
+    // Store io instance globally for use in other modules
+    app.set('io', io);
+
+    // Socket.io connection handling
+    io.on('connection', (socket) => {
+      console.log('🔌 Client connected:', socket.id);
+
+      // Join school-specific room (for multi-tenancy)
+      socket.on('join-school', (schoolId) => {
+        if (schoolId) {
+          socket.join(`school-${schoolId}`);
+          console.log(`📚 Socket ${socket.id} joined school-${schoolId}`);
+        }
+      });
+
+      // Handle disconnection
+      socket.on('disconnect', () => {
+        console.log('🔌 Client disconnected:', socket.id);
+      });
+    });
+
     // Start server
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`\n🚀 Server is running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 API Base URL: http://localhost:${PORT}/api/${API_VERSION}`);
+      console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
       console.log(`\n📚 Available Endpoints:`);
       console.log(`   Authentication:    /api/${API_VERSION}/auth`);
       console.log(`   Super Admin:       /api/${API_VERSION}/super`);

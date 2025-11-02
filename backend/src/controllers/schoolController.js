@@ -201,7 +201,40 @@ const updateStudent = async (req, res) => {
 
     const updatedStudent = await Student.update(id, updates);
 
-    sendSuccess(res, updatedStudent, 'Student updated successfully');
+    // 🔄 AUTO-SYNC: Update student data on all enrolled devices
+    try {
+      // Get all devices where this student is enrolled
+      const enrolledDevicesResult = await query(
+        `SELECT dum.device_id, dum.device_pin, d.serial_number, d.device_name
+         FROM device_user_mappings dum
+         JOIN devices d ON dum.device_id = d.id
+         WHERE dum.student_id = $1 AND d.is_active = TRUE`,
+        [id]
+      );
+
+      if (enrolledDevicesResult.rows.length > 0) {
+        console.log(`🔄 Syncing updated student ${updatedStudent.full_name} to ${enrolledDevicesResult.rows.length} device(s)...`);
+
+        for (const enrollment of enrolledDevicesResult.rows) {
+          // Queue UPDATE command (same as ADD, device will overwrite existing data)
+          await DeviceCommand.queueAddUser(
+            enrollment.device_id,
+            enrollment.device_pin,
+            updatedStudent.full_name,
+            updatedStudent.rfid_card_id || ''
+          );
+
+          console.log(`✅ Student update queued for device ${enrollment.serial_number} (PIN ${enrollment.device_pin})`);
+        }
+      } else {
+        console.log(`ℹ️ Student ${updatedStudent.full_name} is not enrolled on any devices`);
+      }
+    } catch (syncError) {
+      console.error('Auto-sync error (non-fatal):', syncError);
+      // Don't fail the whole request if sync fails
+    }
+
+    sendSuccess(res, updatedStudent, 'Student updated successfully and synced to devices');
   } catch (error) {
     console.error('Update student error:', error);
 
@@ -229,12 +262,98 @@ const deleteStudent = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
+    // 🗑️ AUTO-SYNC: Remove student from all enrolled devices BEFORE deactivating
+    try {
+      // Get all devices where this student is enrolled
+      const enrolledDevicesResult = await query(
+        `SELECT dum.device_id, dum.device_pin, d.serial_number, d.device_name
+         FROM device_user_mappings dum
+         JOIN devices d ON dum.device_id = d.id
+         WHERE dum.student_id = $1 AND d.is_active = TRUE`,
+        [id]
+      );
+
+      if (enrolledDevicesResult.rows.length > 0) {
+        console.log(`🗑️ Removing student ${student.full_name} from ${enrolledDevicesResult.rows.length} device(s)...`);
+
+        for (const enrollment of enrolledDevicesResult.rows) {
+          // Queue DELETE command to remove user from device
+          await DeviceCommand.queueDeleteUser(
+            enrollment.device_id,
+            enrollment.device_pin
+          );
+
+          console.log(`✅ Delete command queued for device ${enrollment.serial_number} (PIN ${enrollment.device_pin})`);
+        }
+
+        // Delete all device mappings for this student
+        await query(
+          'DELETE FROM device_user_mappings WHERE student_id = $1',
+          [id]
+        );
+
+        console.log(`✅ Deleted all device mappings for student ${student.full_name}`);
+      } else {
+        console.log(`ℹ️ Student ${student.full_name} is not enrolled on any devices`);
+      }
+    } catch (syncError) {
+      console.error('Device removal error (non-fatal):', syncError);
+      // Don't fail the whole request if device removal fails
+    }
+
+    // Now deactivate the student in database
     await Student.delete(id);
 
-    sendSuccess(res, null, 'Student deactivated successfully');
+    sendSuccess(res, null, 'Student deactivated successfully and removed from all devices');
   } catch (error) {
     console.error('Delete student error:', error);
     sendError(res, 'Failed to deactivate student', 500);
+  }
+};
+
+/**
+ * 🖼️ Upload student photo
+ */
+const uploadStudentPhoto = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const schoolId = req.tenantSchoolId;
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return sendError(res, 'No photo file uploaded', 400);
+    }
+
+    // Verify student exists and belongs to this school
+    const student = await Student.findById(id);
+    if (!student) {
+      return sendError(res, 'Student not found', 404);
+    }
+    if (student.school_id !== schoolId) {
+      return sendError(res, 'Access denied', 403);
+    }
+
+    const photoUrl = req.file.url; // Set by processPhoto middleware
+
+    // Delete old photo if exists
+    if (student.photo_url && student.photo_url.startsWith('/uploads/')) {
+      const { deletePhoto } = require('../middleware/upload');
+      deletePhoto(student.photo_url);
+    }
+
+    // Update student record with new photo URL
+    const updatedStudent = await Student.update(id, { photoUrl });
+
+    console.log(`✅ Photo uploaded for student ${student.full_name}: ${photoUrl}`);
+
+    sendSuccess(res, {
+      ...updatedStudent,
+      photoUrl,
+      message: 'Photo uploaded and processed successfully (300x300px)'
+    }, 'Student photo uploaded successfully');
+  } catch (error) {
+    console.error('Upload student photo error:', error);
+    sendError(res, 'Failed to upload student photo', 500);
   }
 };
 
@@ -489,18 +608,6 @@ const markManualAttendance = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
-    // Check if attendance already exists for this date
-    const existing = await AttendanceLog.existsToday(studentId, date);
-
-    if (existing && !forceUpdate) {
-      return sendError(res, 'Attendance already marked for this date', 409);
-    }
-
-    // If updating existing attendance
-    if (existing && forceUpdate) {
-      console.log(`✏️ Updating existing attendance for student ${studentId} on ${date} from ${existing.status} to ${status}`);
-    }
-
     // Get school settings to determine if late
     const settings = await SchoolSettings.getOrCreate(schoolId);
 
@@ -548,79 +655,90 @@ const markManualAttendance = async (req, res) => {
       console.log(`ℹ️ Using provided status: ${calculatedStatus}`);
     }
 
-    let attendanceLog;
+    // 🔒 FIXED: Use database-level UPSERT to prevent race conditions
+    // This ensures atomicity - no gap between check and insert
 
-    // UPDATE existing attendance if forceUpdate is true
-    if (existing && forceUpdate) {
-      // Update the existing record using raw SQL
-      const { query } = require('../config/database');
-      
-      const updateResult = await query(
-        `UPDATE attendance_logs 
-         SET status = $1, 
-             check_in_time = $2
-         WHERE student_id = $3 
-           AND date = $4 
-           AND school_id = $5
-         RETURNING *`,
-        [calculatedStatus, checkInDateTime, studentId, date, schoolId]
-      );
+    // Convert forceUpdate to boolean explicitly
+    const shouldUpdate = Boolean(forceUpdate);
 
-      attendanceLog = updateResult.rows[0];
+    const upsertResult = await query(
+      `INSERT INTO attendance_logs (
+        student_id, school_id, device_id, check_in_time, status, date, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (student_id, date, school_id)
+      DO UPDATE SET
+        status = CASE WHEN $8 THEN EXCLUDED.status ELSE attendance_logs.status END,
+        check_in_time = CASE WHEN $8 THEN EXCLUDED.check_in_time ELSE attendance_logs.check_in_time END,
+        notes = CASE WHEN $8 THEN EXCLUDED.notes ELSE attendance_logs.notes END,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *, (xmax = 0) AS inserted`,
+      [
+        studentId,
+        schoolId,
+        null, // device_id (manual entry)
+        checkInDateTime,
+        calculatedStatus,
+        date,
+        notes || null,
+        shouldUpdate // $8 - boolean: whether to allow update
+      ]
+    );
 
-      // Update notes if provided
-      if (notes) {
-        await query(
-          `UPDATE attendance_logs SET notes = $1 WHERE id = $2`,
-          [notes, attendanceLog.id]
-        );
-        attendanceLog.notes = notes;
-      }
+    const attendanceLog = upsertResult.rows[0];
+    const wasInserted = attendanceLog.inserted;
+    const isUpdate = !wasInserted;
 
-      console.log(`✅ Updated attendance: ${existing.status} → ${calculatedStatus}`);
-
-      sendSuccess(
-        res,
-        {
-          ...attendanceLog,
-          isUpdate: true,
-          previousStatus: existing.status,
-          autoCalculated: calculatedStatus !== status,
-          originalStatus: status,
-          finalStatus: calculatedStatus
-        },
-        'Attendance updated successfully',
-        200
-      );
-    } else {
-      // CREATE new attendance log
-      attendanceLog = await AttendanceLog.create({
-        studentId: studentId,
-        schoolId: schoolId,
-        deviceId: null, // Manual entry, no device
-        checkInTime: checkInDateTime,
-        status: calculatedStatus, // Use auto-calculated status
-        date: date,
+    if (isUpdate && !shouldUpdate) {
+      // Record already exists and forceUpdate is false
+      return sendError(res, 'Attendance already marked for this date. Use forceUpdate=true to modify.', 409, {
+        existingAttendance: {
+          status: attendanceLog.status,
+          checkInTime: attendanceLog.check_in_time
+        }
       });
-
-      // Update notes if provided
-      if (notes) {
-        await AttendanceLog.updateNotes(attendanceLog.id, notes);
-      }
-
-      sendSuccess(
-        res,
-        {
-          ...attendanceLog,
-          isUpdate: false,
-          autoCalculated: calculatedStatus !== status, // Let frontend know if status was auto-calculated
-          originalStatus: status,
-          finalStatus: calculatedStatus
-        },
-        'Manual attendance marked successfully',
-        201
-      );
     }
+
+    const logMessage = wasInserted ?
+      `✅ Attendance created: ${calculatedStatus}` :
+      `✅ Attendance updated: ${calculatedStatus}`;
+    console.log(logMessage);
+
+    // Emit WebSocket event for real-time updates
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        // Get student details for the event
+        const studentDetails = await Student.findById(studentId);
+
+        // Emit to school-specific room
+        io.to(`school-${schoolId}`).emit('attendance-updated', {
+          attendanceLog: {
+            ...attendanceLog,
+            student_name: studentDetails?.full_name || 'Unknown'
+          },
+          type: wasInserted ? 'created' : 'updated',
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`🔌 WebSocket event emitted: attendance-updated (school-${schoolId})`);
+      }
+    } catch (wsError) {
+      console.error('WebSocket emission error (non-fatal):', wsError);
+      // Don't fail the request if WebSocket fails
+    }
+
+    sendSuccess(
+      res,
+      {
+        ...attendanceLog,
+        isUpdate,
+        autoCalculated: calculatedStatus !== status,
+        originalStatus: status,
+        finalStatus: calculatedStatus
+      },
+      wasInserted ? 'Manual attendance marked successfully' : 'Attendance updated successfully',
+      wasInserted ? 201 : 200
+    );
   } catch (error) {
     console.error('Mark manual attendance error:', error);
     sendError(res, 'Failed to mark manual attendance', 500);
@@ -804,6 +922,23 @@ const enrollStudentToDevice = async (req, res) => {
 
     if (existingMapping.rows.length > 0) {
       return sendError(res, 'Student is already enrolled on this device', 409);
+    }
+
+    // 🔒 FIXED: Check if PIN is already used by another student on this device
+    const existingPin = await query(
+      `SELECT dum.*, s.full_name
+       FROM device_user_mappings dum
+       JOIN students s ON dum.student_id = s.id
+       WHERE dum.device_id = $1 AND dum.device_pin = $2`,
+      [deviceId, devicePin]
+    );
+
+    if (existingPin.rows.length > 0) {
+      return sendError(
+        res,
+        `PIN ${devicePin} is already assigned to student "${existingPin.rows[0].full_name}" on this device. Please choose a different PIN.`,
+        409
+      );
     }
 
     // Create device_user_mapping
@@ -1036,6 +1171,136 @@ const unenrollStudentFromDevice = async (req, res) => {
   }
 };
 
+/**
+ * DEVICE TIME SYNCHRONIZATION
+ */
+
+// Sync device time with server time
+const syncDeviceTime = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const schoolId = req.tenantSchoolId;
+
+    // Verify device belongs to this school
+    const device = await Device.findById(deviceId);
+    if (!device) {
+      return sendError(res, 'Device not found', 404);
+    }
+    if (device.school_id !== schoolId) {
+      return sendError(res, 'Access denied', 403);
+    }
+
+    // Get current server time
+    const currentTime = new Date();
+
+    // Queue command to set device time
+    await DeviceCommand.queueSetDeviceTime(parseInt(deviceId), currentTime);
+
+    console.log(`⏰ Device time sync queued for ${device.serial_number} to ${currentTime.toISOString()}`);
+
+    sendSuccess(
+      res,
+      {
+        deviceId: deviceId,
+        deviceName: device.device_name,
+        serverTime: currentTime.toISOString(),
+        unixTimestamp: Math.floor(currentTime.getTime() / 1000),
+        message: 'Time sync command queued. Device will update on next poll.'
+      },
+      'Device time synchronization command queued successfully',
+      200
+    );
+  } catch (error) {
+    console.error('Sync device time error:', error);
+    sendError(res, 'Failed to sync device time', 500);
+  }
+};
+
+// Check device time (request device to report its current time)
+const checkDeviceTime = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const schoolId = req.tenantSchoolId;
+
+    // Verify device belongs to this school
+    const device = await Device.findById(deviceId);
+    if (!device) {
+      return sendError(res, 'Device not found', 404);
+    }
+    if (device.school_id !== schoolId) {
+      return sendError(res, 'Access denied', 403);
+    }
+
+    // Queue command to get device time
+    await DeviceCommand.queueGetDeviceTime(parseInt(deviceId));
+
+    console.log(`⏰ Device time check queued for ${device.serial_number}`);
+
+    sendSuccess(
+      res,
+      {
+        deviceId: deviceId,
+        deviceName: device.device_name,
+        message: 'Time check command queued. Device will respond with its current time on next poll.'
+      },
+      'Device time check command queued successfully',
+      200
+    );
+  } catch (error) {
+    console.error('Check device time error:', error);
+    sendError(res, 'Failed to check device time', 500);
+  }
+};
+
+// Sync time for all school devices
+const syncAllDevicesTime = async (req, res) => {
+  try {
+    const schoolId = req.tenantSchoolId;
+
+    // Get all active devices for this school
+    const devices = await Device.findBySchool(schoolId);
+
+    if (!devices || devices.length === 0) {
+      return sendError(res, 'No devices found for this school', 404);
+    }
+
+    const currentTime = new Date();
+    const synced = [];
+
+    for (const device of devices) {
+      try {
+        await DeviceCommand.queueSetDeviceTime(device.id, currentTime);
+        synced.push({
+          deviceId: device.id,
+          deviceName: device.device_name,
+          serialNumber: device.serial_number
+        });
+        console.log(`⏰ Time sync queued for device ${device.serial_number}`);
+      } catch (error) {
+        console.error(`Failed to queue time sync for device ${device.id}:`, error);
+      }
+    }
+
+    console.log(`⏰ Time sync queued for ${synced.length} device(s) to ${currentTime.toISOString()}`);
+
+    sendSuccess(
+      res,
+      {
+        syncedDevices: synced.length,
+        devices: synced,
+        serverTime: currentTime.toISOString(),
+        unixTimestamp: Math.floor(currentTime.getTime() / 1000),
+        message: `Time sync commands queued for ${synced.length} device(s). Devices will update on next poll.`
+      },
+      'All devices time synchronization queued successfully',
+      200
+    );
+  } catch (error) {
+    console.error('Sync all devices time error:', error);
+    sendError(res, 'Failed to sync all devices time', 500);
+  }
+};
+
 module.exports = {
   // Students
   getStudents,
@@ -1044,6 +1309,7 @@ module.exports = {
   updateStudent,
   deleteStudent,
   importStudents,
+  uploadStudentPhoto,
 
   // Dashboard
   getDashboardToday,
@@ -1071,4 +1337,9 @@ module.exports = {
   enrollAllStudentsToDevice,
   getDeviceEnrolledStudents,
   unenrollStudentFromDevice,
+
+  // Device Time Sync
+  syncDeviceTime,
+  checkDeviceTime,
+  syncAllDevicesTime,
 };

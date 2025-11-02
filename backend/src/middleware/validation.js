@@ -352,6 +352,120 @@ const validateId = [
   handleValidationErrors
 ];
 
+/**
+ * 🔒 NEW: Device validation rules (Bug #11 fix validation)
+ */
+const validateDevice = {
+  enrollStudent: [
+    param('deviceId')
+      .isInt({ min: 1 }).withMessage('Invalid device ID'),
+
+    body('studentId')
+      .notEmpty().withMessage('Student ID is required')
+      .isInt({ min: 1 }).withMessage('Student ID must be a positive integer'),
+
+    body('devicePin')
+      .notEmpty().withMessage('Device PIN is required')
+      .isInt({ min: 1, max: 999999 }).withMessage('Device PIN must be between 1 and 999999'),
+
+    handleValidationErrors
+  ],
+
+  syncTime: [
+    param('deviceId')
+      .isInt({ min: 1 }).withMessage('Invalid device ID'),
+    handleValidationErrors
+  ]
+};
+
+/**
+ * 🔒 NEW: School settings validation (Bug #5 fix validation)
+ */
+const validateSettings = {
+  update: [
+    body('school_open_time')
+      .optional()
+      .matches(/^([0-1]\d):([0-5]\d):([0-5]\d)$/).withMessage('Invalid time format (use HH:MM:SS)')
+      .custom((value) => {
+        const [hours] = value.split(':').map(Number);
+        if (hours >= 12) {
+          throw new Error('School start time must be in the morning (before 12:00 PM). Did you mean 09:00 instead of 21:00?');
+        }
+        if (hours < 6) {
+          throw new Error('School start time should be after 6:00 AM');
+        }
+        return true;
+      }),
+
+    body('school_close_time')
+      .optional()
+      .matches(/^([0-2]\d):([0-5]\d):([0-5]\d)$/).withMessage('Invalid time format (use HH:MM:SS)')
+      .custom((value) => {
+        const [hours] = value.split(':').map(Number);
+        if (hours < 12) {
+          throw new Error('School close time should be in afternoon/evening (after 12:00 PM)');
+        }
+        return true;
+      }),
+
+    body('late_threshold_minutes')
+      .optional()
+      .isInt({ min: 0, max: 60 }).withMessage('Late threshold must be between 0 and 60 minutes'),
+
+    body('early_leave_minutes')
+      .optional()
+      .isInt({ min: 0, max: 120 }).withMessage('Early leave threshold must be between 0 and 120 minutes'),
+
+    handleValidationErrors
+  ]
+};
+
+/**
+ * 🔒 IMPROVED: Enhanced attendance validation (Bug #1 fix validation)
+ */
+validateAttendance.markManual = [
+  body('studentId')
+    .notEmpty().withMessage('Student ID is required')
+    .isInt({ min: 1 }).withMessage('Student ID must be a positive integer'),
+
+  body('date')
+    .notEmpty().withMessage('Date is required')
+    .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Date must be in YYYY-MM-DD format')
+    .custom((value) => {
+      const date = new Date(value);
+      const now = new Date();
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      if (date > now) {
+        throw new Error('Cannot mark attendance for future dates');
+      }
+      if (date < ninetyDaysAgo) {
+        throw new Error('Cannot mark attendance older than 90 days');
+      }
+      return true;
+    }),
+
+  body('checkInTime')
+    .optional()
+    .matches(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/).withMessage('Invalid time format (use HH:MM:SS)'),
+
+  body('status')
+    .optional()
+    .isIn(['present', 'absent', 'late', 'leave']).withMessage('Status must be one of: present, absent, late, leave'),
+
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 500 }).withMessage('Notes cannot exceed 500 characters'),
+
+  body('forceUpdate')
+    .optional()
+    .isBoolean().withMessage('forceUpdate must be a boolean'),
+
+  handleValidationErrors
+];
+
 module.exports = {
   validateStudent,
   validateAttendance,
@@ -359,5 +473,7 @@ module.exports = {
   validateTeacher,
   validateAuth,
   validateId,
+  validateDevice,
+  validateSettings,
   handleValidationErrors
 };

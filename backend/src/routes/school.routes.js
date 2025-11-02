@@ -14,6 +14,7 @@ const {
   validateTeacher,
   validateId
 } = require('../middleware/validation');
+const { uploadStudentPhoto, processPhoto } = require('../middleware/upload');
 
 /**
  * School Admin Routes
@@ -47,6 +48,9 @@ router.put('/students/:id', validateStudent.update, schoolController.updateStude
 
 // DELETE /api/v1/school/students/:id (with validation)
 router.delete('/students/:id', validateId, schoolController.deleteStudent);
+
+// POST /api/v1/school/students/:id/photo - Upload student photo
+router.post('/students/:id/photo', validateId, uploadStudentPhoto, processPhoto, schoolController.uploadStudentPhoto);
 
 /**
  * DASHBOARD & ATTENDANCE
@@ -131,6 +135,18 @@ router.get('/devices/:deviceId/enrolled-students', schoolController.getDeviceEnr
 
 // DELETE /api/v1/school/devices/:deviceId/students/:studentId
 router.delete('/devices/:deviceId/students/:studentId', schoolController.unenrollStudentFromDevice);
+
+/**
+ * DEVICE TIME SYNCHRONIZATION
+ */
+// POST /api/v1/school/devices/:deviceId/sync-time - Sync single device time with server
+router.post('/devices/:deviceId/sync-time', schoolController.syncDeviceTime);
+
+// POST /api/v1/school/devices/:deviceId/check-time - Check single device time
+router.post('/devices/:deviceId/check-time', schoolController.checkDeviceTime);
+
+// POST /api/v1/school/devices/sync-all-time - Sync all devices time with server
+router.post('/devices/sync-all-time', schoolController.syncAllDevicesTime);
 
 /**
  * CLASS MANAGEMENT

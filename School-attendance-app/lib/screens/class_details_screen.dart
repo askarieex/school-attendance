@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/teacher_service.dart';
 import '../services/api_service.dart';
+import 'student_profile_screen.dart';
 
 /// Class Details Screen - View students and mark attendance
 /// Clean UI inspired by web dashboard
@@ -96,17 +97,39 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
           children: [
             // Header
             Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
               child: Column(
                 children: [
                   // Back button and title
                   Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937)),
-                        onPressed: () => Navigator.pop(context),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFE2E8F0),
+                            width: 1,
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF0F172A), size: 18),
+                          onPressed: () => Navigator.pop(context),
+                          padding: const EdgeInsets.all(10),
+                          constraints: const BoxConstraints(),
+                        ),
                       ),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,96 +137,104 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
                             Text(
                               fullClassName,
                               style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1F2937),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                                letterSpacing: -0.5,
                               ),
                             ),
+                            const SizedBox(height: 4),
                             Text(
                               '$subject • ${DateFormat('EEEE, MMM d').format(DateTime.now())}',
                               style: const TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF6B7280),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      // Mark All Button (Compact)
-                      ElevatedButton(
-                        onPressed: () {
-                          _showMarkAllDialog();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                      // Mark All Button
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF10B981), Color(0xFF059669)],
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        child: const Text(
-                          'Mark All',
-                          style: TextStyle(fontSize: 13),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _showMarkAllDialog();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: const Text(
+                            'Mark All',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                   
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   
-                  // Stats Row (Scrollable to prevent overflow)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildStatChip(
+                  // Stats Row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
                           label: 'Total',
                           value: _totalStudents.toString(),
-                          color: const Color(0xFF6B7280),
+                          color: const Color(0xFF64748B),
                         ),
-                        const SizedBox(width: 8),
-                        _buildStatChip(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildStatCard(
                           label: 'Present',
                           value: _presentCount.toString(),
                           color: const Color(0xFF10B981),
                         ),
-                        const SizedBox(width: 8),
-                        _buildStatChip(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildStatCard(
                           label: 'Late',
                           value: _lateCount.toString(),
                           color: const Color(0xFFF59E0B),
                         ),
-                        const SizedBox(width: 8),
-                        _buildStatChip(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildStatCard(
                           label: 'Absent',
                           value: _absentCount.toString(),
                           color: const Color(0xFFEF4444),
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2563EB).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '$attendanceRate%',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2563EB),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -233,36 +264,39 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
     );
   }
 
-  Widget _buildStatChip({
+  Widget _buildStatCard({
     required String label,
     required String value,
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
         children: [
           Text(
             value,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
               color: color,
+              letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
-              color: color,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
+              color: color.withOpacity(0.8),
             ),
           ),
         ],
@@ -276,143 +310,207 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
     final checkInTime = student['check_in_time']; // From API
     final status = student['status'] ?? 'pending'; // present, late, absent, pending
     
-    Color statusColor = const Color(0xFF6B7280);
+    Color statusColor = const Color(0xFF94A3B8);
     String statusText = 'Not Marked';
-    IconData statusIcon = Icons.circle_outlined;
+    IconData statusIcon = Icons.radio_button_unchecked_rounded;
     
     if (status == 'present') {
       statusColor = const Color(0xFF10B981);
       statusText = 'Present';
-      statusIcon = Icons.check_circle;
+      statusIcon = Icons.check_circle_rounded;
     } else if (status == 'late') {
       statusColor = const Color(0xFFF59E0B);
       statusText = 'Late';
-      statusIcon = Icons.access_time;
+      statusIcon = Icons.access_time_rounded;
     } else if (status == 'absent') {
       statusColor = const Color(0xFFEF4444);
       statusText = 'Absent';
-      statusIcon = Icons.cancel;
+      statusIcon = Icons.cancel_rounded;
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: const Color(0xFF6366F1).withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+            spreadRadius: -4,
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Index
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => StudentProfileScreen(student: student),
               ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Avatar
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  name[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Student Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1F2937),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Index
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 1,
                     ),
                   ),
-                  Text(
-                    'Roll No: $rollNo${checkInTime != null ? " • $checkInTime" : ""}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF6B7280),
+                  child: Center(
+                    child: Text(
+                      '$index',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ),
-            
-            // Status Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(statusIcon, size: 16, color: statusColor),
-                  const SizedBox(width: 6),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
+                ),
+                const SizedBox(width: 14),
+                
+                // Avatar
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF6366F1).withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 14),
+                
+                // Student Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Roll: $rollNo',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Status Badge
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, size: 14, color: statusColor),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                
+                // Mark Button
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      _showMarkAttendanceDialog(student);
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 18,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            
-            // Mark Button
-            IconButton(
-              icon: const Icon(Icons.edit, size: 20),
-              color: const Color(0xFF6B7280),
-              onPressed: () {
-                _showMarkAttendanceDialog(student);
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -465,52 +563,157 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Present Button
             _buildMarkButton(
               label: 'Present',
               icon: Icons.check_circle,
               color: const Color(0xFF10B981),
-              onTap: () {
-                // TODO: Mark as present
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${student['full_name']} marked Present')),
-                );
-              },
+              onTap: () => _markAttendance(student, 'present'),
             ),
             const SizedBox(height: 12),
-            
-            // Late Button
-            _buildMarkButton(
-              label: 'Late',
-              icon: Icons.access_time,
-              color: const Color(0xFFF59E0B),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${student['full_name']} marked Late')),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            
+
             // Absent Button
             _buildMarkButton(
               label: 'Absent',
               icon: Icons.cancel,
               color: const Color(0xFFEF4444),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${student['full_name']} marked Absent')),
-                );
-              },
+              onTap: () => _markAttendance(student, 'absent'),
+            ),
+            const SizedBox(height: 12),
+
+            // Leave Button
+            _buildMarkButton(
+              label: 'Leave',
+              icon: Icons.event_busy,
+              color: const Color(0xFF8B5CF6),
+              onTap: () => _markAttendance(student, 'leave'),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'System will auto-calculate late status',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// ✅ FIXED: Actually mark attendance via API!
+  Future<void> _markAttendance(Map<String, dynamic> student, String status) async {
+    Navigator.pop(context); // Close dialog
+
+    // Show loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('Marking attendance...'),
+          ],
+        ),
+        duration: Duration(seconds: 10),
+      ),
+    );
+
+    try {
+      final sectionId = widget.classData['section_id'];
+      final studentId = student['id'];
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final now = DateTime.now();
+      final checkInTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
+
+      print('📤 Marking attendance: student=$studentId, date=$today, status=$status, time=$checkInTime');
+
+      final response = await widget.apiService.post(
+        '/teacher/sections/$sectionId/attendance',
+        {
+          'studentId': studentId,
+          'date': today,
+          'status': status, // backend will auto-calculate late if needed
+          'checkInTime': checkInTime,
+          'notes': 'Marked by teacher from mobile app',
+        },
+        requiresAuth: true,
+      );
+
+      if (response['success'] == true) {
+        final actualStatus = response['data']?['status'] ?? status;
+
+        // Update local state
+        setState(() {
+          final index = _students.indexWhere((s) => s['id'] == studentId);
+          if (index != -1) {
+            _students[index]['status'] = actualStatus;
+            _students[index]['check_in_time'] = checkInTime;
+
+            // Recalculate stats
+            _presentCount = _students.where((s) => s['status'] == 'present').length;
+            _lateCount = _students.where((s) => s['status'] == 'late').length;
+            _absentCount = _students.where((s) => s['status'] == 'absent').length;
+          }
+        });
+
+        String statusLabel = actualStatus.toUpperCase();
+        if (actualStatus == 'late') statusLabel = 'LATE (auto-calculated)';
+
+        // Show success
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text('${student['full_name']} marked as $statusLabel'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        print('✅ Attendance marked successfully: $actualStatus');
+      } else {
+        throw Exception('Backend returned success: false');
+      }
+    } catch (e) {
+      print('❌ Error marking attendance: $e');
+
+      // Show error
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 12),
+              const Text('Failed to mark attendance'),
+            ],
+          ),
+          backgroundColor: const Color(0xFFEF4444),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () => _markAttendance(student, status),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildMarkButton({
@@ -562,9 +765,7 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('All students marked Present!')),
-              );
+              _markAllPresent();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
@@ -574,5 +775,93 @@ class _ClassDetailsScreenState extends State<ClassDetailsScreen> {
         ],
       ),
     );
+  }
+
+  /// ✅ Mark all students as present
+  Future<void> _markAllPresent() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text('Marking ${_students.length} students...'),
+          ],
+        ),
+        duration: const Duration(seconds: 30),
+      ),
+    );
+
+    int successCount = 0;
+    int failCount = 0;
+
+    for (var student in _students) {
+      try {
+        final sectionId = widget.classData['section_id'];
+        final studentId = student['id'];
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final now = DateTime.now();
+        final checkInTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
+
+        final response = await widget.apiService.post(
+          '/teacher/sections/$sectionId/attendance',
+          {
+            'studentId': studentId,
+            'date': today,
+            'status': 'present',
+            'checkInTime': checkInTime,
+            'notes': 'Bulk marked by teacher',
+          },
+          requiresAuth: true,
+        );
+
+        if (response['success'] == true) {
+          final actualStatus = response['data']?['status'] ?? 'present';
+          student['status'] = actualStatus;
+          student['check_in_time'] = checkInTime;
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (e) {
+        print('❌ Error marking student ${student['id']}: $e');
+        failCount++;
+      }
+    }
+
+    // Recalculate stats
+    setState(() {
+      _presentCount = _students.where((s) => s['status'] == 'present').length;
+      _lateCount = _students.where((s) => s['status'] == 'late').length;
+      _absentCount = _students.where((s) => s['status'] == 'absent').length;
+    });
+
+    // Show result
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              failCount == 0 ? Icons.check_circle : Icons.info,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Text('Marked $successCount students${failCount > 0 ? ' ($failCount failed)' : ''}'),
+          ],
+        ),
+        backgroundColor: failCount == 0 ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+
+    print('✅ Bulk attendance: $successCount success, $failCount failed');
   }
 }

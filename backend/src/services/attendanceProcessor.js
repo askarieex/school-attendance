@@ -68,13 +68,15 @@ async function processAttendance(log, device) {
       [device.school_id]
     );
 
+    // 🔒 FIXED: Use school_open_time (matches database schema) instead of school_start_time
     const settings = settingsResult.rows[0] || {
-      school_start_time: '08:00:00',
-      late_threshold_min: 15
+      school_open_time: '08:00:00',
+      late_threshold_minutes: 15
     };
 
     // 3. Determine attendance status (present, late, absent)
-    const attendanceStatus = determineStatus(timestamp, settings);
+    // 🔒 FIXED: Changed from const to let to allow reassignment for leave status
+    let attendanceStatus = determineStatus(timestamp, settings);
 
     // 4. Extract date from timestamp
     const attendanceDate = timestamp.split(' ')[0]; // Get "2025-10-18" from "2025-10-18 08:45:30"
@@ -148,16 +150,16 @@ function determineStatus(checkInTime, settings) {
     const checkInDate = new Date(checkInTime);
     const checkInMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
 
-    // Parse school start time (e.g., "08:00:00") with safe fallback
-    const startTime = settings?.school_start_time || '08:00:00';
+    // 🔒 FIXED: Use school_open_time (matches database schema)
+    const startTime = settings?.school_open_time || '08:00:00';
     const [startHour, startMinute] = startTime.split(':').map(Number);
     const startMinutes = startHour * 60 + startMinute;
 
     // Calculate difference in minutes
     const diffMinutes = checkInMinutes - startMinutes;
 
-    // Apply late threshold (default: 15 minutes)
-    const lateThreshold = settings.late_threshold_min || 15;
+    // 🔒 FIXED: Use late_threshold_minutes (matches database schema)
+    const lateThreshold = settings.late_threshold_minutes || 15;
 
     if (diffMinutes <= 0) {
       return 'present'; // On time or early

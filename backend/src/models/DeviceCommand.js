@@ -241,7 +241,7 @@ class DeviceCommand {
     }
 
     const commandType = `add_users_batch_${students.length}`;
-    
+
     // First insert to get the DB-generated ID
     const result = await query(
       `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
@@ -249,12 +249,12 @@ class DeviceCommand {
        RETURNING id`,
       [deviceId, commandType, 'PLACEHOLDER', 10]
     );
-    
+
     const commandId = result.rows[0].id;
-    
+
     // Now generate the command string with the correct ID
     const commandString = CommandGenerator.addUsersBatch(students, commandId);
-    
+
     // Update the command string
     await query(
       'UPDATE device_commands SET command_string = $1 WHERE id = $2',
@@ -263,6 +263,66 @@ class DeviceCommand {
 
     console.log(`📋 Batched command queued: ${students.length} students (id=${commandId}) for device ${deviceId}`);
 
+    return result.rows[0];
+  }
+
+  /**
+   * Queue "Set Device Time" command
+   * Synchronizes device clock with server time
+   * @param {number} deviceId - Device ID
+   * @param {Date} datetime - Date/time to set (defaults to current server time)
+   */
+  static async queueSetDeviceTime(deviceId, datetime = new Date()) {
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'set_time', 'PLACEHOLDER', 90]
+    );
+
+    const commandId = result.rows[0].id;
+
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.setDeviceTime(datetime, commandId);
+
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+
+    const unixTimestamp = Math.floor(datetime.getTime() / 1000);
+    console.log(`⏰ Command queued: set_time (id=${commandId}) for device ${deviceId} to ${datetime.toISOString()} (Unix: ${unixTimestamp})`);
+    return result.rows[0];
+  }
+
+  /**
+   * Queue "Get Device Time" command
+   * Requests current device time (device will respond with POST to /iclock/cdata)
+   * @param {number} deviceId - Device ID
+   */
+  static async queueGetDeviceTime(deviceId) {
+    // First insert to get the DB-generated ID
+    const result = await query(
+      `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id`,
+      [deviceId, 'get_time', 'PLACEHOLDER', 80]
+    );
+
+    const commandId = result.rows[0].id;
+
+    // Now generate the command string with the correct ID
+    const commandString = CommandGenerator.getDeviceTime(commandId);
+
+    // Update the command string
+    await query(
+      'UPDATE device_commands SET command_string = $1 WHERE id = $2',
+      [commandString, commandId]
+    );
+
+    console.log(`⏰ Command queued: get_time (id=${commandId}) for device ${deviceId}`);
     return result.rows[0];
   }
 }

@@ -67,22 +67,28 @@ class CommandGenerator {
   }
 
   /**
-   * Generate "Set Device Time" command
-   * @param {Date} datetime - Date/time to set
+   * Generate "Set Device Time" command using Unix Timestamp (Official ZKTeco PUSH Protocol)
+   * @param {Date} datetime - Date/time to set (defaults to current time)
    * @param {number} commandId - Database command ID (optional, defaults to 210)
    * @returns {string} Command string
    */
   static setDeviceTime(datetime = new Date(), commandId = 210) {
-    // Format: C:<ID>:TIME <YYYY-MM-DD HH:MM:SS>
-    const year = datetime.getFullYear();
-    const month = String(datetime.getMonth() + 1).padStart(2, '0');
-    const day = String(datetime.getDate()).padStart(2, '0');
-    const hours = String(datetime.getHours()).padStart(2, '0');
-    const minutes = String(datetime.getMinutes()).padStart(2, '0');
-    const seconds = String(datetime.getSeconds()).padStart(2, '0');
+    // OFFICIAL PROTOCOL: Use Unix timestamp (seconds since Jan 1, 1970 UTC)
+    // Format: C:<ID>:SET OPTIONS DateTime=<UnixTimestamp>
+    const unixTimestamp = Math.floor(datetime.getTime() / 1000);
+    return `C:${commandId}:SET OPTIONS DateTime=${unixTimestamp}`;
+  }
 
-    const timeString = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    return `C:${commandId}:TIME ${timeString}`;
+  /**
+   * Generate "Get Device Time" command (Official ZKTeco PUSH Protocol)
+   * Device will respond with POST to /iclock/cdata containing DateTime=<timestamp>
+   * @param {number} commandId - Database command ID (optional, defaults to 211)
+   * @returns {string} Command string
+   */
+  static getDeviceTime(commandId = 211) {
+    // OFFICIAL PROTOCOL: Request device's current time setting
+    // Format: C:<ID>:GET OPTIONS DateTime
+    return `C:${commandId}:GET OPTIONS DateTime`;
   }
 
   /**

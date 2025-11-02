@@ -137,11 +137,40 @@ router.post('/sections/:sectionId/attendance', async (req, res) => {
     if (!studentId || !date || !status) {
       return sendError(res, 'studentId, date, and status are required', 400);
     }
-    
+
+    // ✅ SECURITY FIX: Validate date is not in future
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    if (attendanceDate > today) {
+      console.log(`❌ Rejected future date: ${date} (today is ${today.toISOString().split('T')[0]})`);
+      return sendError(res, 'Cannot mark attendance for future dates', 400);
+    }
+
+    // ✅ BUSINESS LOGIC FIX: Validate date is not Sunday
+    const dayOfWeek = attendanceDate.getDay();
+    if (dayOfWeek === 0) {  // Sunday = 0
+      console.log(`❌ Rejected Sunday: ${date}`);
+      return sendError(res, 'Cannot mark attendance on Sundays', 400);
+    }
+
+    // ✅ BUSINESS LOGIC FIX: Validate date is not a holiday
+    const holidayCheck = await query(
+      'SELECT id, holiday_name FROM holidays WHERE school_id = $1 AND holiday_date = $2 AND is_active = TRUE',
+      [schoolId, date]
+    );
+    if (holidayCheck.rows.length > 0) {
+      const holidayName = holidayCheck.rows[0].holiday_name;
+      console.log(`❌ Rejected holiday: ${date} (${holidayName})`);
+      return sendError(res, `Cannot mark attendance on holiday: ${holidayName}`, 400);
+    }
+
     // Use provided checkInTime or default to 09:00:00
     const timeToUse = checkInTime || '09:00:00';
     const checkInDateTime = `${date}T${timeToUse}`;
-    
+
     console.log(`📝 Marking attendance: student=${studentId}, date=${date}, status=${status}, time=${timeToUse}`);
 
     // Get teacher_id
@@ -287,13 +316,14 @@ router.get('/sections/:sectionId/attendance', async (req, res) => {
     }
 
     // Get attendance logs for the date
+    // Use TO_CHAR to avoid timezone conversion issues
     const logsResult = await query(
-      `SELECT 
+      `SELECT
         al.id,
         al.student_id,
         al.status,
         al.check_in_time,
-        al.date,
+        TO_CHAR(al.date, 'YYYY-MM-DD') as date,
         al.is_manual,
         al.notes,
         s.full_name as student_name,
@@ -334,18 +364,18 @@ router.get('/holidays', async (req, res) => {
     }
 
     let queryText = `
-      SELECT id, holiday_name, holiday_date, holiday_type, description, is_recurring
+      SELECT id, holiday_name, TO_CHAR(holiday_date, 'YYYY-MM-DD') as holiday_date, holiday_type, description
       FROM holidays
-      WHERE school_id = $1
+      WHERE school_id = $1 AND is_active = TRUE
     `;
-    
+
     const params = [schoolId];
-    
+
     if (year) {
       queryText += ` AND EXTRACT(YEAR FROM holiday_date) = $2`;
       params.push(year);
     }
-    
+
     queryText += ` ORDER BY holiday_date ASC`;
 
     const result = await query(queryText, params);
@@ -356,7 +386,99 @@ router.get('/holidays', async (req, res) => {
   } catch (error) {
     console.error('Get holidays error:', error);
     console.error('Error details:', error.message);
+    console.error('Stack trace:', error.stack);
     sendError(res, 'Failed to retrieve holidays', 500);
+  }
+});
+
+/**
+ * GET /api/v1/teacher/sections/:sectionId/attendance/range
+ * Get attendance logs for date range (BATCH API for teacher calendar)
+ * Query params: startDate, endDate (YYYY-MM-DD)
+ */
+router.get('/sections/:sectionId/attendance/range', async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { startDate, endDate } = req.query;
+    const userId = req.user.id;
+    const schoolId = req.tenantSchoolId;
+
+    // Verify user is a teacher
+    if (req.user.role !== 'teacher') {
+      return sendError(res, 'Access denied. Teachers only.', 403);
+    }
+
+    if (!startDate || !endDate) {
+      return sendError(res, 'startDate and endDate are required (YYYY-MM-DD)', 400);
+    }
+
+    // ✅ PERFORMANCE FIX: Validate date range size
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+
+    if (daysDiff < 0) {
+      return sendError(res, 'End date must be after or equal to start date', 400);
+    }
+
+    if (daysDiff > 90) {
+      console.log(`❌ Rejected large date range: ${daysDiff} days (${startDate} to ${endDate})`);
+      return sendError(res, 'Date range cannot exceed 90 days. Please select a smaller range.', 400);
+    }
+
+    // Get teacher_id from user_id
+    const teacherResult = await query(
+      'SELECT id FROM teachers WHERE user_id = $1 AND school_id = $2 AND is_active = TRUE',
+      [userId, schoolId]
+    );
+
+    if (teacherResult.rows.length === 0) {
+      return sendError(res, 'Teacher profile not found', 404);
+    }
+
+    const teacherId = teacherResult.rows[0].id;
+
+    // Verify teacher is assigned to this section
+    const assignmentCheck = await query(
+      'SELECT id FROM teacher_class_assignments WHERE teacher_id = $1 AND section_id = $2',
+      [teacherId, sectionId]
+    );
+
+    if (assignmentCheck.rows.length === 0) {
+      return sendError(res, 'You are not assigned to this section', 403);
+    }
+
+    // Get attendance logs for the date range
+    // Use TO_CHAR to avoid timezone conversion issues
+    const logsResult = await query(
+      `SELECT
+        al.id,
+        al.student_id,
+        al.status,
+        al.check_in_time,
+        TO_CHAR(al.date, 'YYYY-MM-DD') as date,
+        al.is_manual,
+        al.notes,
+        s.full_name as student_name,
+        s.roll_number
+       FROM attendance_logs al
+       JOIN students s ON al.student_id = s.id
+       WHERE al.school_id = $1
+         AND s.section_id = $2
+         AND al.date >= $3
+         AND al.date <= $4
+       ORDER BY al.date ASC, s.roll_number ASC`,
+      [schoolId, sectionId, startDate, endDate]
+    );
+
+    console.log(`✅ Found ${logsResult.rows.length} attendance logs for section ${sectionId} from ${startDate} to ${endDate}`);
+
+    sendSuccess(res, logsResult.rows, 'Attendance range retrieved successfully');
+  } catch (error) {
+    console.error('Get attendance range error:', error);
+    console.error('Error details:', error.message);
+    console.error('Stack trace:', error.stack);
+    sendError(res, 'Failed to retrieve attendance range', 500);
   }
 });
 

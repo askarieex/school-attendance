@@ -116,49 +116,39 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       }
       
       // Fetch attendance logs for the month from API
+      print('📅 Loading attendance for ${DateFormat('MMMM yyyy').format(_selectedMonth)}...');
+
       for (int day = 1; day <= daysInMonth; day++) {
         final date = DateTime(year, month, day);
-        
-        // Skip future dates
-        if (date.isAfter(DateTime.now())) {
-          continue;
+
+        // Skip future dates entirely (don't fetch or process)
+        final today = DateTime.now();
+        final todayDate = DateTime(today.year, today.month, today.day);
+        final dayDate = DateTime(year, month, day);
+
+        if (dayDate.isAfter(todayDate)) {
+          continue; // Skip future dates
         }
-        
-        // Mark Sundays
-        if (_isSunday(day)) {
-          for (var student in students) {
-            attendanceMap[student['id']]![day] = 'S';
-          }
-          continue;
-        }
-        
-        // Mark Holidays
-        if (_isHoliday(day)) {
-          for (var student in students) {
-            attendanceMap[student['id']]![day] = 'H';
-          }
-          continue;
-        }
-        
-        // Fetch REAL attendance data from API
+
+        // Fetch REAL attendance data from API (even for Sundays/Holidays - we'll override later)
         final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-        
+
         try {
           final response = await widget.apiService.get(
             '/teacher/sections/$_selectedSectionId/attendance?date=$dateStr',
             requiresAuth: true,
           );
-          
+
           if (response['success'] == true && response['data'] != null) {
             final logs = response['data'] as List;
-            
-            print('✅ Fetched ${logs.length} logs for $dateStr');
-            
+
+            print('  Day $day: Fetched ${logs.length} logs');
+
             // Map logs to students
             for (var log in logs) {
               final studentId = log['student_id'];
               final status = log['status'] ?? 'present';
-              
+
               if (attendanceMap.containsKey(studentId)) {
                 // Map status to our format
                 if (status == 'present') {
@@ -167,13 +157,46 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                   attendanceMap[studentId]![day] = 'L';
                 } else if (status == 'absent') {
                   attendanceMap[studentId]![day] = 'A';
+                } else if (status == 'leave') {
+                  attendanceMap[studentId]![day] = 'LV';
                 }
               }
             }
           }
         } catch (e) {
-          print('❌ Error fetching attendance for $dateStr: $e');
-          // Don't mark anything if API fails (leaves empty)
+          print('  ❌ Error fetching day $day: $e');
+        }
+      }
+
+      // ✅ CRITICAL FIX: Override Sundays and Holidays AFTER loading API data
+      // This ensures correct display even if there's bad data in the database
+      print('🔄 Overriding Sundays and Holidays...');
+
+      for (int day = 1; day <= daysInMonth; day++) {
+        final date = DateTime(year, month, day);
+        final today = DateTime.now();
+        final todayDate = DateTime(today.year, today.month, today.day);
+        final dayDate = DateTime(year, month, day);
+
+        // Skip future dates
+        if (dayDate.isAfter(todayDate)) {
+          continue;
+        }
+
+        // OVERRIDE with Sunday marker (even if API returned data)
+        if (_isSunday(day)) {
+          for (var student in students) {
+            attendanceMap[student['id']]![day] = 'S';
+          }
+          print('  ✅ Day $day marked as Sunday');
+        }
+
+        // OVERRIDE with Holiday marker (even if API returned data)
+        if (_isHoliday(day)) {
+          for (var student in students) {
+            attendanceMap[student['id']]![day] = 'H';
+          }
+          print('  ✅ Day $day marked as Holiday');
         }
       }
       
@@ -251,18 +274,50 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   /// Edit attendance - tap on box to change status
   void _editAttendance(int studentId, int day, String studentName) {
     final currentStatus = _attendanceData[studentId]?[day] ?? '';
-    
-    // Can't edit Sunday or Holiday
-    if (currentStatus == 'S' || currentStatus == 'H') {
+
+    // Can't edit Sunday or Holiday (but Leave is editable)
+    if (currentStatus == 'S') {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Cannot edit ${currentStatus == 'S' ? 'Sunday' : 'Holiday'}'),
-          duration: const Duration(seconds: 2),
+        const SnackBar(
+          content: Text('Cannot edit Sunday'),
+          duration: Duration(seconds: 2),
         ),
       );
       return;
     }
-    
+
+    if (currentStatus == 'H') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot edit Holiday'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // ✅ SECURITY FIX: Can't edit future dates
+    final selectedDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    if (selectedDate.isAfter(todayDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Cannot mark attendance for future dates'),
+            ],
+          ),
+          backgroundColor: Color(0xFFEF4444),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     // Show edit dialog
     showModalBottomSheet(
       context: context,
@@ -275,69 +330,154 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   
   Widget _buildEditDialog(int studentId, int day, String studentName, String currentStatus) {
     final dateStr = '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-    final now = DateTime.now();
-    final checkInTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
-    
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Mark Attendance',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+
+    // Initialize selected time (outside StatefulBuilder to persist)
+    TimeOfDay selectedTime = TimeOfDay.now();
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        String checkInTime = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}:00';
+
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Mark Attendance',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$studentName - Day $day',
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ✅ TIME PICKER - NEW FEATURE!
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.access_time, color: Color(0xFF6B7280), size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Check-in Time:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      ],
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        final TimeOfDay? picked = await showTimePicker(
+                          context: context,
+                          initialTime: selectedTime,
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: Color(0xFF2563EB),
+                                  onPrimary: Colors.white,
+                                  onSurface: Color(0xFF1F2937),
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+
+                        if (picked != null) {
+                          setState(() {
+                            selectedTime = picked;
+                            checkInTime = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}:00';
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              selectedTime.format(context),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.edit, color: Colors.white, size: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Status buttons (3 options only)
+              _buildStatusButton(
+                'Present',
+                'present',
+                const Color(0xFF10B981),
+                Icons.check_circle,
+                currentStatus == 'P' || currentStatus == 'L',
+                () => _updateAttendance(studentId, day, 'present', dateStr, checkInTime),
+              ),
+              const SizedBox(height: 12),
+              _buildStatusButton(
+                'Absent',
+                'absent',
+                const Color(0xFFEF4444),
+                Icons.cancel,
+                currentStatus == 'A',
+                () => _updateAttendance(studentId, day, 'absent', dateStr, checkInTime),
+              ),
+              const SizedBox(height: 12),
+              _buildStatusButton(
+                'Leave',
+                'leave',
+                const Color(0xFF8B5CF6),
+                Icons.event_busy,
+                currentStatus == 'LV',
+                () => _updateAttendance(studentId, day, 'leave', dateStr, checkInTime),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '💡 Tip: Set the actual arrival time to ensure correct status',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            '$studentName - Day $day',
-            style: const TextStyle(
-              fontSize: 16,
-              color: Color(0xFF6B7280),
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Status buttons (3 options only)
-          _buildStatusButton(
-            'Present',
-            'present',
-            const Color(0xFF10B981),
-            Icons.check_circle,
-            currentStatus == 'P' || currentStatus == 'L',
-            () => _updateAttendance(studentId, day, 'present', dateStr, checkInTime),
-          ),
-          const SizedBox(height: 12),
-          _buildStatusButton(
-            'Absent',
-            'absent',
-            const Color(0xFFEF4444),
-            Icons.cancel,
-            currentStatus == 'A',
-            () => _updateAttendance(studentId, day, 'absent', dateStr, checkInTime),
-          ),
-          const SizedBox(height: 12),
-          _buildStatusButton(
-            'Leave',
-            'leave',
-            const Color(0xFF8B5CF6),
-            Icons.event_busy,
-            false,
-            () => _updateAttendance(studentId, day, 'leave', dateStr, checkInTime),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'System will auto-calculate late status',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
   
@@ -522,9 +662,6 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                     ? const Center(child: Text('No students found'))
                     : _buildCalendarGrid(daysInMonth),
           ),
-          
-          // Legend
-          _buildLegend(),
         ],
       ),
     );
@@ -714,7 +851,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
             // Day headers - More compact
             Row(
               children: [
-                const SizedBox(width: 140), // Student name column width
+                const SizedBox(width: 130), // Student name column width
                 ...List.generate(daysInMonth, (index) {
                   final day = index + 1;
                   final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
@@ -723,9 +860,9 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                   final isHoliday = _isHoliday(day);
                   
                   return Container(
-                    width: 44,
+                    width: 40,
                     margin: const EdgeInsets.only(right: 3),
-                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
                     decoration: BoxDecoration(
                       color: isSunday || isHoliday 
                           ? const Color(0xFFFEF3C7) 
@@ -738,7 +875,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                           day.toString().padLeft(2, '0'),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                            fontSize: 12,
                             color: isSunday || isHoliday 
                                 ? const Color(0xFFF59E0B)
                                 : const Color(0xFF1F2937),
@@ -747,7 +884,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                         Text(
                           dayName,
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 8,
                             color: Colors.grey[600],
                           ),
                         ),
@@ -782,8 +919,8 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         children: [
           // Student info - More compact
           Container(
-            width: 140,
-            padding: const EdgeInsets.all(10),
+            width: 130,
+            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
@@ -840,33 +977,56 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           ...List.generate(daysInMonth, (index) {
             final day = index + 1;
             final status = _attendanceData[studentId]?[day] ?? '';
-            
+
+            // ✅ Check if date is in the future
+            final selectedDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+            final today = DateTime.now();
+            final todayDate = DateTime(today.year, today.month, today.day);
+            final isFutureDate = selectedDate.isAfter(todayDate);
+
             return GestureDetector(
               onTap: () => _editAttendance(studentId, day, name),
               child: Container(
-                width: 44,
-                height: 52,
+                width: 40,
+                height: 48,
                 margin: const EdgeInsets.only(right: 3),
                 decoration: BoxDecoration(
                   color: _getStatusColor(status),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
+                  border: isFutureDate && status.isEmpty
+                      ? Border.all(
+                          color: Colors.grey.withOpacity(0.4),
+                          width: 1,
+                          style: BorderStyle.solid,
+                        )
+                      : null,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 3,
-                      offset: const Offset(0, 1),
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: Center(
-                  child: Text(
-                    status,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
+                  child: isFutureDate && status.isEmpty
+                      ? Opacity(
+                          opacity: 0.3,
+                          child: const Icon(
+                            Icons.lock_outline,
+                            size: 14,
+                            color: Colors.grey,
+                          ),
+                        )
+                      : Text(
+                          status,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                 ),
               ),
             );
@@ -884,10 +1044,12 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         return const Color(0xFFF59E0B); // Orange
       case 'A':
         return const Color(0xFFEF4444); // Red
+      case 'LV':
+        return const Color(0xFF8B5CF6); // Purple (Leave)
       case 'S':
-        return const Color(0xFF9CA3AF); // Gray
+        return const Color(0xFF9CA3AF); // Gray (Sunday)
       case 'H':
-        return const Color(0xFF8B5CF6); // Purple
+        return const Color(0xFFEC4899); // Pink (Holiday)
       default:
         return const Color(0xFFF3F4F6); // Light gray
     }

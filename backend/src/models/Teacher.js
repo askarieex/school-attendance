@@ -262,6 +262,61 @@ class Teacher {
       academicYear
     } = assignmentData;
 
+    // ✅ BUSINESS LOGIC FIX: Ensure teacher can only be form teacher for ONE class at a time
+    if (isFormTeacher) {
+      // Check if this teacher is already form teacher for another class
+      const existingFormTeacherAssignment = await query(
+        `SELECT id, section_id FROM teacher_class_assignments
+         WHERE teacher_id = $1 AND is_form_teacher = TRUE AND section_id != $2`,
+        [teacherId, sectionId]
+      );
+
+      if (existingFormTeacherAssignment.rows.length > 0) {
+        const oldSectionId = existingFormTeacherAssignment.rows[0].section_id;
+
+        console.log(`🔄 Teacher ${teacherId} is already form teacher for section ${oldSectionId}`);
+        console.log(`🔄 Removing form teacher status from section ${oldSectionId}`);
+
+        // Remove form teacher flag from old assignment
+        await query(
+          `UPDATE teacher_class_assignments
+           SET is_form_teacher = FALSE, updated_at = CURRENT_TIMESTAMP
+           WHERE teacher_id = $1 AND section_id = $2`,
+          [teacherId, oldSectionId]
+        );
+
+        // Also remove from sections table
+        await query(
+          'UPDATE sections SET form_teacher_id = NULL WHERE id = $1',
+          [oldSectionId]
+        );
+
+        console.log(`✅ Removed form teacher status from old section ${oldSectionId}`);
+      }
+
+      // Check if the NEW section already has a different form teacher
+      const existingFormTeacher = await query(
+        'SELECT form_teacher_id FROM sections WHERE id = $1',
+        [sectionId]
+      );
+
+      if (existingFormTeacher.rows[0]?.form_teacher_id) {
+        // Get the user_id of the current teacher to compare
+        const currentTeacherResult = await query(
+          'SELECT user_id FROM teachers WHERE id = $1',
+          [teacherId]
+        );
+
+        const currentUserId = currentTeacherResult.rows[0]?.user_id;
+        const existingUserId = existingFormTeacher.rows[0].form_teacher_id;
+
+        // Only throw error if it's a DIFFERENT teacher
+        if (currentUserId !== existingUserId) {
+          throw new Error('This section already has a form teacher. Please remove the existing form teacher first.');
+        }
+      }
+    }
+
     const result = await query(
       `INSERT INTO teacher_class_assignments (
         teacher_id, section_id, subject, is_form_teacher, academic_year
@@ -276,16 +331,6 @@ class Teacher {
 
     // If form teacher, update sections table with user_id (not teacher_id)
     if (isFormTeacher) {
-      // Check if section already has a form teacher
-      const existingFormTeacher = await query(
-        'SELECT form_teacher_id FROM sections WHERE id = $1',
-        [sectionId]
-      );
-
-      if (existingFormTeacher.rows[0]?.form_teacher_id) {
-        throw new Error('This section already has a form teacher. Please remove the existing form teacher first.');
-      }
-
       // Get the user_id for this teacher
       const teacherResult = await query(
         'SELECT user_id FROM teachers WHERE id = $1',
@@ -298,6 +343,7 @@ class Teacher {
           'UPDATE sections SET form_teacher_id = $1 WHERE id = $2',
           [userId, sectionId]
         );
+        console.log(`✅ Set teacher ${teacherId} as form teacher for section ${sectionId}`);
       }
     }
 

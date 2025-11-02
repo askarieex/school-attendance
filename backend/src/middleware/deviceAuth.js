@@ -33,9 +33,9 @@ const deviceAuth = async (req, res, next) => {
     // Attach device info to request for use in controllers
     req.device = result.rows[0];
 
-    // Update last heartbeat
+    // 🔒 FIXED: Update last_seen and set device as online (last_heartbeat column doesn't exist)
     await query(
-      'UPDATE devices SET last_heartbeat = CURRENT_TIMESTAMP, last_seen = CURRENT_TIMESTAMP WHERE id = $1',
+      'UPDATE devices SET last_seen = CURRENT_TIMESTAMP, is_online = TRUE WHERE id = $1',
       [req.device.id]
     );
 
