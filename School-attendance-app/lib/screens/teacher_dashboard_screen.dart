@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/teacher_service.dart';
-import 'class_details_screen.dart';
+import 'class_attendance_screen.dart';
 import 'attendance_calendar_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
@@ -23,7 +23,21 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   List<Map<String, dynamic>> _classes = [];
   bool _isLoading = true;
   int _selectedIndex = 0; // 0=Dashboard, 1=Classes, 2=Calendar, 3=Students
-  
+  Map<int, Map<String, int>> _attendanceStats = {}; // sectionId -> {present, late, absent}
+
+  // Dashboard stats
+  Map<String, dynamic> _dashboardStats = {
+    'totalStudents': 0,
+    'boysCount': 0,
+    'girlsCount': 0,
+    'presentToday': 0,
+    'lateToday': 0,
+    'absentToday': 0,
+    'leaveToday': 0,
+    'notMarkedToday': 0,
+    'attendancePercentage': 100,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -31,7 +45,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     _teacherService = TeacherService(authProvider.apiService);
     _loadClasses();
   }
-  
+
   Future<void> _loadClasses() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (authProvider.currentUser?.id == null) return;
@@ -50,10 +64,68 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     print('📚 Total assignments: ${assignments.length}');
     print('📚 Form teacher classes: ${formTeacherClasses.length}');
 
+    // ✅ Load today's attendance stats for each class
+    await _loadAttendanceStats(formTeacherClasses);
+
+    // ✅ Load comprehensive dashboard stats
+    await _loadDashboardStats();
+
     setState(() {
       _classes = formTeacherClasses; // Show ONLY form teacher classes
       _isLoading = false;
     });
+  }
+
+  Future<void> _loadDashboardStats() async {
+    try {
+      final stats = await _teacherService.getDashboardStats();
+      setState(() {
+        _dashboardStats = stats;
+      });
+      print('📊 Dashboard stats loaded: $_dashboardStats');
+    } catch (e) {
+      print('⚠️ Failed to load dashboard stats: $e');
+      // Keep default zeros
+    }
+  }
+
+  Future<void> _loadAttendanceStats(List<Map<String, dynamic>> classes) async {
+    final stats = <int, Map<String, int>>{};
+
+    // ✅ CHECK: Don't load stats on Sunday
+    final today = DateTime.now();
+    if (today.weekday == DateTime.sunday) {
+      print('📊 Skipping attendance stats - today is Sunday');
+      // Set all stats to 0 on Sunday
+      for (final classData in classes) {
+        final sectionId = classData['section_id'] as int?;
+        if (sectionId != null) {
+          stats[sectionId] = {'present': 0, 'late': 0, 'absent': 0};
+        }
+      }
+      _attendanceStats = stats;
+      return;
+    }
+
+    for (final classData in classes) {
+      final sectionId = classData['section_id'] as int?;
+      if (sectionId == null) continue;
+
+      try {
+        final todayStats = await _teacherService.getTodayAttendanceStats(sectionId);
+        stats[sectionId] = {
+          'present': todayStats['presentCount'] ?? 0,
+          'late': todayStats['lateCount'] ?? 0,
+          'absent': todayStats['absentCount'] ?? 0,
+        };
+        print('📊 Section $sectionId stats: ${stats[sectionId]}');
+      } catch (e) {
+        print('⚠️ Failed to load stats for section $sectionId: $e');
+        stats[sectionId] = {'present': 0, 'late': 0, 'absent': 0};
+      }
+    }
+
+    _attendanceStats = stats;
   }
 
   @override
@@ -81,6 +153,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildSimpleTopBar(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final schoolName = authProvider.currentUser?.schoolName ?? 'School';
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -133,14 +208,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
-                  'Heritage School',
-                  style: TextStyle(
+                Text(
+                  schoolName,
+                  style: const TextStyle(
                     color: Color(0xFF0F172A),
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.2,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ],
             ),
@@ -723,189 +800,258 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadClasses,
+      color: const Color(0xFF6366F1),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Dashboard Header (only on dashboard)
-            _buildDashboardHeader(context, authProvider),
+            // Beautiful Gradient Header
+            _buildModernDashboardHeader(context, authProvider),
             const SizedBox(height: 24),
-            
-            // Modern Stats Cards
+
+            // Today's Overview Title
+            const Text(
+              'Today\'s Overview',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _getFormattedDate(),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Attendance Summary Card with Gradient
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFFE9ECEF),
-                  width: 1,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
                 children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Attendance Rate',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${_dashboardStats['attendancePercentage']}',
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  letterSpacing: -2,
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8, left: 2),
+                                child: Text(
+                                  '%',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.trending_up_rounded,
+                          color: Colors.white,
+                          size: 36,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D6EFD).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.school_outlined,
-                      color: Color(0xFF0D6EFD),
-                      size: 28,
-                    ),
+                    height: 1,
+                    color: Colors.white.withOpacity(0.2),
                   ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'My Classes',
-                          style: TextStyle(
-                            color: Color(0xFF6C757D),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          totalClasses.toString(),
-                          style: const TextStyle(
-                            color: Color(0xFF212529),
-                            fontSize: 36,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'Active classes',
-                          style: TextStyle(
-                            color: Color(0xFFADB5BD),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildGradientMiniStat(
+                        '${(_dashboardStats['presentToday'] ?? 0) + (_dashboardStats['lateToday'] ?? 0)}',  // ✅ FIX: Combine present + late
+                        'Present',
+                        Icons.check_circle_rounded,
+                      ),
+                      Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      _buildGradientMiniStat(
+                        '${_dashboardStats['lateToday']}',
+                        'Late',
+                        Icons.access_time_rounded,
+                      ),
+                      Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      _buildGradientMiniStat(
+                        '${_dashboardStats['absentToday']}',
+                        'Absent',
+                        Icons.cancel_rounded,
+                      ),
+                    ],
                   ),
+
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-            
-            // Top row - Total counts
+
+            const SizedBox(height: 20),
+
+            // Student Statistics Grid
+            const Text(
+              'Student Statistics',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+
             Row(
               children: [
                 Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.people_outline,
+                  child: _buildBeautifulStatCard(
+                    icon: Icons.groups_rounded,
                     label: 'Total Students',
-                    value: totalStudents.toString(),
+                    value: '${_dashboardStats['totalStudents']}',
                     color: const Color(0xFF00B4D8),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.male,
+                  child: _buildBeautifulStatCard(
+                    icon: Icons.school_rounded,
+                    label: 'My Classes',
+                    value: '$totalClasses',
+                    color: const Color(0xFF6366F1),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildBeautifulStatCard(
+                    icon: Icons.male_rounded,
                     label: 'Boys',
-                    value: '0',
-                    color: const Color(0xFF007AFF),
+                    value: '${_dashboardStats['boysCount']}',
+                    color: const Color(0xFF3B82F6),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.female,
+                  child: _buildBeautifulStatCard(
+                    icon: Icons.female_rounded,
                     label: 'Girls',
-                    value: '0',
+                    value: '${_dashboardStats['girlsCount']}',
                     color: const Color(0xFFFF2D55),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF2D55), Color(0xFFFF3B30)],
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            
-            // Second row - Today's attendance
+
+            const SizedBox(height: 20),
+
+            // Additional Stats Row
             Row(
               children: [
                 Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.check_circle_outline,
-                    label: 'Present Today',
-                    value: '0',
-                    color: const Color(0xFF10B981),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.access_time,
-                    label: 'Late',
-                    value: '0',
-                    color: const Color(0xFFFF9500),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.cancel_outlined,
-                    label: 'Absent',
-                    value: '0',
-                    color: const Color(0xFFFF3B30),
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 10),
-            
-            // Third row - Additional useful stats
-            Row(
-              children: [
-                Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.event_busy,
+                  child: _buildBeautifulStatCard(
+                    icon: Icons.event_busy_rounded,
                     label: 'On Leave',
-                    value: '0',
+                    value: '${_dashboardStats['leaveToday']}',
                     color: const Color(0xFFAF52DE),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFAF52DE), Color(0xFF8B5CF6)],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: cards.buildCompactStatCard(
-                    icon: Icons.trending_up,
-                    label: 'Attendance %',
-                    value: '100%',
-                    color: const Color(0xFF10B981),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: cards.buildCompactStatCard(
+                  child: _buildBeautifulStatCard(
                     icon: Icons.pending_outlined,
                     label: 'Not Marked',
-                    value: totalStudents.toString(),
+                    value: '${_dashboardStats['notMarkedToday']}',
                     color: const Color(0xFF8E8E93),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF8E8E93), Color(0xFF636366)],
+                    ),
                   ),
                 ),
               ],
             ),
-            
-            const SizedBox(height: 36),
-            
+
+            const SizedBox(height: 32),
+
             // Quick Actions Section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -913,9 +1059,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1C1C1E),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.5,
                   ),
                 ),
               ],
@@ -1090,10 +1237,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ClassDetailsScreen(
-                            classData: classData,
-                            apiService: authProvider.apiService,
-                          ),
+                                            builder: (context) => ClassAttendanceScreen(
+                                              classData: classData,
+                                            ),
+                          
                         ),
                       );
                     },
@@ -1365,15 +1512,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ClassDetailsScreen(
-                  classData: classData,
-                  apiService: authProvider.apiService,
-                ),
-              ),
-            );
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ClassAttendanceScreen(
+                                        classData: classData,
+                                      ),
+                                    ),
+                                  );
+            
           },
           borderRadius: BorderRadius.circular(18),
           child: Padding(
@@ -1473,11 +1620,23 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 const SizedBox(height: 18),
                 Row(
                   children: [
-                    _buildMiniStat('0', 'Present', const Color(0xFF10B981)),
+                    _buildMiniStat(
+                      (_attendanceStats[classData['section_id']]?['present'] ?? 0).toString(),
+                      'Present',
+                      const Color(0xFF10B981),
+                    ),
                     const SizedBox(width: 10),
-                    _buildMiniStat('0', 'Late', const Color(0xFFF59E0B)),
+                    _buildMiniStat(
+                      (_attendanceStats[classData['section_id']]?['late'] ?? 0).toString(),
+                      'Late',
+                      const Color(0xFFF59E0B),
+                    ),
                     const SizedBox(width: 10),
-                    _buildMiniStat('0', 'Absent', const Color(0xFFEF4444)),
+                    _buildMiniStat(
+                      (_attendanceStats[classData['section_id']]?['absent'] ?? 0).toString(),
+                      'Absent',
+                      const Color(0xFFEF4444),
+                    ),
                   ],
                 ),
               ],
@@ -1523,6 +1682,160 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // Modern Dashboard Header with Gradient
+  Widget _buildModernDashboardHeader(BuildContext context, AuthProvider authProvider) {
+    final now = DateTime.now();
+    final hour = now.hour;
+    String greeting;
+    String emoji;
+    if (hour < 12) {
+      greeting = 'Good Morning';
+      emoji = '☀️';
+    } else if (hour < 17) {
+      greeting = 'Good Afternoon';
+      emoji = '🌤️';
+    } else {
+      greeting = 'Good Evening';
+      emoji = '🌙';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              greeting,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              emoji,
+              style: const TextStyle(fontSize: 20),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          authProvider.currentUser?.name ?? 'Teacher',
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+            letterSpacing: -1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Beautiful Stat Card with Gradient
+  Widget _buildBeautifulStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required Gradient gradient,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withOpacity(0.1),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Mini stat for gradient card
+  Widget _buildGradientMiniStat(String value, String label, IconData icon) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: Colors.white,
+          size: 24,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.white.withOpacity(0.9),
+          ),
+        ),
+      ],
     );
   }
 

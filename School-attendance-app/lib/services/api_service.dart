@@ -5,19 +5,26 @@ import '../config/api_config.dart';
 /// API Service - Handles all HTTP requests with caching
 class ApiService {
   String? _accessToken;
+  String? _refreshToken;
+
+  // ✅ For handling concurrent token refresh requests
+  bool _isRefreshing = false;
+  Future<void>? _refreshFuture;
 
   // ✅ PERFORMANCE: Add HTTP cache (30 second TTL)
   final Map<String, _CacheEntry> _cache = {};
   static const _cacheDuration = Duration(seconds: 30);
 
-  // Set token after login
-  void setToken(String token) {
-    _accessToken = token;
+  // Set tokens after login
+  void setTokens(String accessToken, String refreshToken) {
+    _accessToken = accessToken;
+    _refreshToken = refreshToken;
   }
 
-  // Clear token on logout
-  void clearToken() {
+  // Clear tokens on logout
+  void clearTokens() {
     _accessToken = null;
+    _refreshToken = null;
     _cache.clear(); // Clear cache on logout
   }
 
@@ -39,6 +46,45 @@ class ApiService {
     
     return headers;
   }
+
+  /// ✅ Refresh the access token using the refresh token
+  Future<void> _performTokenRefresh() async {
+    try {
+      print('🔄 Refreshing token...');
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.refresh}'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': _refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _accessToken = data['data']?['accessToken'];
+        _refreshToken = data['data']?['refreshToken'];
+        print('✅ Token refreshed successfully');
+      } else {
+        print('❌ Token refresh failed');
+        clearTokens();
+        throw UnauthorizedException('Session expired. Please login again.');
+      }
+    } catch (e) {
+      print('❌ Token refresh error: $e');
+      clearTokens();
+      throw UnauthorizedException('Session expired. Please login again.');
+    }
+  }
+
+  /// ✅ Wrapper for token refresh to handle concurrent requests
+  Future<void> _handleTokenRefresh() {
+    if (!_isRefreshing) {
+      _isRefreshing = true;
+      _refreshFuture = _performTokenRefresh().whenComplete(() {
+        _isRefreshing = false;
+        _refreshFuture = null;
+      });
+    }
+    return _refreshFuture!;
+  }
   
   // POST request
   Future<Map<String, dynamic>> post(
@@ -47,22 +93,16 @@ class ApiService {
     bool requiresAuth = false,
   }) async {
     try {
-      final url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
-      print('📤 POST: $url');
-      print('📦 Body: ${jsonEncode(body)}');
-      
-      final response = await http.post(
-        url,
-        headers: _getHeaders(requiresAuth: requiresAuth),
-        body: jsonEncode(body),
-      ).timeout(ApiConfig.connectTimeout);
-      
-      print('📥 Response: ${response.statusCode}');
-      print('📥 Body: ${response.body}');
-      
-      return _handleResponse(response);
+      return await _requestWithRetry(
+        () => http.post(
+          Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+          headers: _getHeaders(requiresAuth: requiresAuth),
+          body: jsonEncode(body),
+        ),
+        requiresAuth: requiresAuth,
+      );
     } catch (e) {
-      print('❌ API Error: $e');
+      print('❌ API Error (POST $endpoint): $e');
       throw ApiException('Network error: $e');
     }
   }
@@ -72,53 +112,40 @@ class ApiService {
     String endpoint, {
     Map<String, String>? queryParams,
     bool requiresAuth = true,
-    bool useCache = true, // ✅ Option to disable cache for specific requests
+    bool useCache = true,
   }) async {
+    var url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
+    if (queryParams != null) {
+      url = url.replace(queryParameters: queryParams);
+    }
+    final cacheKey = url.toString();
+
+    if (useCache && _cache.containsKey(cacheKey)) {
+      final entry = _cache[cacheKey]!;
+      if (DateTime.now().isBefore(entry.expiresAt)) {
+        print('⚡ Cache HIT: $url');
+        return entry.data;
+      }
+      _cache.remove(cacheKey);
+      print('🕐 Cache EXPIRED: $url');
+    }
+
     try {
-      var url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      final data = await _requestWithRetry(
+        () => http.get(url, headers: _getHeaders(requiresAuth: requiresAuth)),
+        requiresAuth: requiresAuth,
+      );
 
-      if (queryParams != null) {
-        url = url.replace(queryParameters: queryParams);
-      }
-
-      final cacheKey = url.toString();
-
-      // ✅ PERFORMANCE: Check cache first
-      if (useCache && _cache.containsKey(cacheKey)) {
-        final entry = _cache[cacheKey]!;
-        if (DateTime.now().isBefore(entry.expiresAt)) {
-          print('⚡ Cache HIT: $url');
-          return entry.data;
-        } else {
-          // Cache expired, remove it
-          _cache.remove(cacheKey);
-          print('🕐 Cache EXPIRED: $url');
-        }
-      }
-
-      print('📤 GET: $url');
-
-      final response = await http.get(
-        url,
-        headers: _getHeaders(requiresAuth: requiresAuth),
-      ).timeout(ApiConfig.receiveTimeout);
-
-      print('📥 Response: ${response.statusCode}');
-
-      final data = _handleResponse(response);
-
-      // ✅ PERFORMANCE: Cache successful GET requests
-      if (useCache && response.statusCode >= 200 && response.statusCode < 300) {
+      if (useCache) {
         _cache[cacheKey] = _CacheEntry(
           data: data,
           expiresAt: DateTime.now().add(_cacheDuration),
         );
         print('💾 Cached: $url (TTL: ${_cacheDuration.inSeconds}s)');
       }
-
       return data;
     } catch (e) {
-      print('❌ API Error: $e');
+      print('❌ API Error (GET $endpoint): $e');
       throw ApiException('Network error: $e');
     }
   }
@@ -130,20 +157,61 @@ class ApiService {
     bool requiresAuth = true,
   }) async {
     try {
-      final url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
-      print('📤 PUT: $url');
+      return await _requestWithRetry(
+        () => http.put(
+          Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+          headers: _getHeaders(requiresAuth: requiresAuth),
+          body: jsonEncode(body),
+        ),
+        requiresAuth: requiresAuth,
+      );
+    } catch (e) {
+      print('❌ API Error (PUT $endpoint): $e');
+      throw ApiException('Network error: $e');
+    }
+  }
+
+  // DELETE request
+  Future<Map<String, dynamic>> delete(
+    String endpoint, {
+    bool requiresAuth = true,
+  }) async {
+    try {
+      return await _requestWithRetry(
+        () => http.delete(
+          Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+          headers: _getHeaders(requiresAuth: requiresAuth),
+        ),
+        requiresAuth: requiresAuth,
+      );
+    } catch (e) {
+      print('❌ API Error (DELETE $endpoint): $e');
+      throw ApiException('Network error: $e');
+    }
+  }
+
+  /// ✅ Generic request handler with retry logic for token refresh
+  Future<Map<String, dynamic>> _requestWithRetry(
+    Future<http.Response> Function() request, {
+    required bool requiresAuth,
+    int retryCount = 0,
+  }) async {
+    try {
+      final response = await request().timeout(ApiConfig.connectTimeout);
       
-      final response = await http.put(
-        url,
-        headers: _getHeaders(requiresAuth: requiresAuth),
-        body: jsonEncode(body),
-      ).timeout(ApiConfig.connectTimeout);
-      
-      print('📥 Response: ${response.statusCode}');
+      if (response.statusCode == 401 && requiresAuth && retryCount == 0) {
+        print('🔑 Access token expired. Attempting refresh...');
+        await _handleTokenRefresh();
+        // Retry the original request with the new token
+        return await _requestWithRetry(request, requiresAuth: true, retryCount: 1);
+      }
       
       return _handleResponse(response);
+    } on UnauthorizedException {
+      // If refresh token fails, this will be thrown
+      rethrow;
     } catch (e) {
-      print('❌ API Error: $e');
+      print('❌ Request failed: $e');
       throw ApiException('Network error: $e');
     }
   }

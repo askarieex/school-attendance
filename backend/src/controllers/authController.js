@@ -32,6 +32,19 @@ const login = async (req, res) => {
     // Update last login
     await User.updateLastLogin(user.id);
 
+    // ✅ FIX: Get school name for the login response
+    const { query } = require('../config/database');
+    let schoolName = null;
+    if (user.school_id) {
+      const schoolResult = await query(
+        'SELECT name FROM schools WHERE id = $1',
+        [user.school_id]
+      );
+      if (schoolResult.rows.length > 0) {
+        schoolName = schoolResult.rows[0].name;
+      }
+    }
+
     // Generate tokens
     const payload = {
       userId: user.id,
@@ -52,6 +65,7 @@ const login = async (req, res) => {
           role: user.role,
           schoolId: user.school_id,
           fullName: user.full_name,
+          school_name: schoolName,  // ✅ FIX: Add school_name to login response
         },
         accessToken,
         refreshToken,
@@ -117,32 +131,61 @@ const getMe = async (req, res) => {
       return sendError(res, 'User not found', 404);
     }
 
-    // If user is a teacher, include their teacher profile and assignments
-    if (user.role === 'teacher') {
-      const Teacher = require('../models/Teacher');
-      const { query } = require('../config/database');
-      
-      // Get teacher record by user_id
-      const teacherResult = await query(
-        'SELECT id FROM teachers WHERE user_id = $1 AND is_active = TRUE',
-        [user.id]
+    const { query } = require('../config/database');
+
+    // ✅ FIX: Create a mutable response object instead of modifying the user object
+    const responseData = { ...user };
+
+    // Get school name if user has a school_id
+    if (user.school_id) {
+      const schoolResult = await query(
+        'SELECT name FROM schools WHERE id = $1',
+        [user.school_id]
       );
-      
-      if (teacherResult.rows.length > 0) {
-        const teacherId = teacherResult.rows[0].id;
-        
-        // Get teacher assignments
-        const assignments = await Teacher.getAssignments(teacherId, '2025-2026');
-        
-        // Add teacher data to response
-        user.teacher_id = teacherId;
-        user.assignments = assignments;
+
+      if (schoolResult.rows.length > 0) {
+        responseData.school_name = schoolResult.rows[0].name;
       }
     }
 
-    sendSuccess(res, user, 'User retrieved successfully');
+    // If user is a teacher, include their teacher profile and assignments
+    if (user.role === 'teacher') {
+      try {
+        const Teacher = require('../models/Teacher');
+
+        // Get teacher record by user_id
+        const teacherResult = await query(
+          'SELECT id FROM teachers WHERE user_id = $1 AND is_active = TRUE',
+          [user.id]
+        );
+
+        if (teacherResult.rows.length > 0) {
+          const teacherId = teacherResult.rows[0].id;
+
+          // ✅ FIX: Get teacher assignments with error handling
+          const assignments = await Teacher.getAssignments(teacherId, '2025-2026');
+
+          // Add teacher data to response
+          responseData.teacher_id = teacherId;
+          responseData.assignments = assignments || [];  // ✅ FIX: Default to empty array
+        } else {
+          // ✅ FIX: No teacher record found, return empty assignments
+          console.log(`⚠️ No teacher record found for user_id: ${user.id}`);
+          responseData.assignments = [];
+        }
+      } catch (teacherError) {
+        // ✅ FIX: Don't crash if teacher assignments fail - just log and continue
+        console.error('Error fetching teacher assignments:', teacherError);
+        console.error('Stack:', teacherError.stack);
+        responseData.assignments = [];
+      }
+    }
+
+    sendSuccess(res, responseData, 'User retrieved successfully');
   } catch (error) {
     console.error('Get user error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error message:', error.message);
     sendError(res, 'Failed to retrieve user', 500);
   }
 };

@@ -17,6 +17,8 @@ const deviceSyncRoutes = require('./routes/deviceSync.routes');
 const holidayRoutes = require('./routes/holiday.routes');
 const leaveRoutes = require('./routes/leave.routes');
 const iclockRoutes = require('./routes/iclock');
+const whatsappRoutes = require('./routes/whatsapp.routes');
+const subjectRoutes = require('./routes/subject.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -140,9 +142,11 @@ app.use(`/api/${API_VERSION}/teacher`, teacherRoutes);
 // IMPORTANT: Mount specific /school/* routes BEFORE /school to prevent route conflicts
 app.use(`/api/${API_VERSION}/school/holidays`, holidayRoutes);
 app.use(`/api/${API_VERSION}/school/leaves`, leaveRoutes);
+app.use(`/api/${API_VERSION}/school/subjects`, subjectRoutes);
 app.use(`/api/${API_VERSION}/school`, schoolRoutes);
 app.use(`/api/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/api/${API_VERSION}/device/sync`, deviceSyncRoutes);
+app.use(`/api/${API_VERSION}/whatsapp`, whatsappRoutes);
 
 // ZKTeco device endpoints (hardcoded, no /api prefix or version)
 app.use('/iclock', iclockRoutes);
@@ -225,6 +229,7 @@ const startServer = async () => {
       console.log(`   Holidays:          /api/${API_VERSION}/school/holidays`);
       console.log(`   Hardware Devices:  /api/${API_VERSION}/attendance`);
       console.log(`   Device Sync:       /api/${API_VERSION}/device/sync`);
+      console.log(`   WhatsApp API:      /api/${API_VERSION}/whatsapp`);
       console.log(`\n🔧 ZKTeco Device Endpoints:`);
       console.log(`   Receive Attendance: POST /iclock/cdata`);
       console.log(`   Send Commands:      GET  /iclock/getrequest`);

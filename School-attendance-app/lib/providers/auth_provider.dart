@@ -53,7 +53,7 @@ class AuthProvider with ChangeNotifier {
           print('⚠️ Storage warning (non-critical): $storageError');
           // Continue anyway - tokens are in memory
         }
-        _apiService.setToken(accessToken);
+        _apiService.setTokens(accessToken, refreshToken);
         _accessToken = accessToken;
         
         // Create user object
@@ -62,6 +62,7 @@ class AuthProvider with ChangeNotifier {
           email: user['email'],
           name: user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
+          schoolName: user['school_name'],  // ✅ FIX: Use snake_case from API
         );
         
         print('✅ Login successful: ${_currentUser?.name}');
@@ -89,7 +90,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout() async {
     _currentUser = null;
     _accessToken = null;
-    _apiService.clearToken();
+    _apiService.clearTokens();
     await _storageService.clearAll();
     notifyListeners();
     print('✅ Logged out');
@@ -99,12 +100,13 @@ class AuthProvider with ChangeNotifier {
   Future<bool> tryAutoLogin() async {
     try {
       final accessToken = await _storageService.getAccessToken();
+      final refreshToken = await _storageService.getRefreshToken();
       
-      if (accessToken == null) {
+      if (accessToken == null || refreshToken == null) {
         return false;
       }
       
-      _apiService.setToken(accessToken);
+      _apiService.setTokens(accessToken, refreshToken);
       _accessToken = accessToken;
       
       // Get current user data from API
@@ -118,6 +120,7 @@ class AuthProvider with ChangeNotifier {
           email: user['email'],
           name: user['full_name'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
+          schoolName: user['school_name'],
         );
         
         notifyListeners();

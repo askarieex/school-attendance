@@ -2,99 +2,83 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { enforceSchoolTenancy } = require('../middleware/multiTenant');
+const {
+  requireTeacher,
+  validateTeacherSectionAccess,
+  validateTeacherStudentAccess
+} = require('../middleware/teacherAuth');
 const Student = require('../models/Student');
 const Teacher = require('../models/Teacher');
 const { query } = require('../config/database');
 const { sendSuccess, sendError } = require('../utils/response');
+const { getCurrentDateIST } = require('../utils/timezone');
+const whatsappService = require('../services/whatsappService');
 
 /**
  * Teacher-specific Routes
  * Base path: /api/v1/teacher
  * These routes are for teachers to access their assigned classes and students
+ *
+ * 🔒 SECURITY: All routes protected with teacher authorization middleware
  */
 
-// Apply authentication and multi-tenancy (but NOT requireSchoolAdmin)
+// Apply authentication, multi-tenancy, and teacher-specific authorization
 router.use(authenticate);
 router.use(enforceSchoolTenancy);
+router.use(requireTeacher);
 
 /**
  * GET /api/v1/teacher/sections/:sectionId/students
  * Get students in a section that the teacher is assigned to
+ * 🔒 Protected: validateTeacherSectionAccess middleware
  */
-router.get('/sections/:sectionId/students', async (req, res) => {
-  try {
-    const { sectionId } = req.params;
-    const userId = req.user.id;
-    const schoolId = req.tenantSchoolId;
+router.get(
+  '/sections/:sectionId/students',
+  validateTeacherSectionAccess('params', 'sectionId'),
+  async (req, res) => {
+    try {
+      const { sectionId } = req.params;
+      const schoolId = req.tenantSchoolId;
 
-    // Verify user is a teacher
-    if (req.user.role !== 'teacher') {
-      return sendError(res, 'Access denied. Teachers only.', 403);
+      // Authorization already validated by middleware
+      // Get students in this section
+      const studentsResult = await query(
+        `SELECT s.*,
+                c.class_name,
+                sec.section_name
+         FROM students s
+         LEFT JOIN classes c ON s.class_id = c.id
+         LEFT JOIN sections sec ON s.section_id = sec.id
+         WHERE s.section_id = $1
+           AND s.school_id = $2
+           AND s.is_active = TRUE
+         ORDER BY
+           CASE WHEN s.roll_number ~ '^[0-9]+$'
+                THEN CAST(s.roll_number AS INTEGER)
+                ELSE 999999
+           END ASC,
+           s.roll_number ASC,
+           s.full_name ASC`,
+        [sectionId, schoolId]
+      );
+
+      sendSuccess(res, studentsResult.rows, 'Students retrieved successfully');
+    } catch (error) {
+      console.error('Get section students error:', error);
+      sendError(res, 'Failed to retrieve students', 500);
     }
-
-    // Get teacher_id from user_id
-    const teacherResult = await query(
-      'SELECT id FROM teachers WHERE user_id = $1 AND school_id = $2 AND is_active = TRUE',
-      [userId, schoolId]
-    );
-
-    if (teacherResult.rows.length === 0) {
-      return sendError(res, 'Teacher profile not found', 404);
-    }
-
-    const teacherId = teacherResult.rows[0].id;
-
-    // Verify teacher is assigned to this section
-    const assignmentCheck = await query(
-      'SELECT id FROM teacher_class_assignments WHERE teacher_id = $1 AND section_id = $2',
-      [teacherId, sectionId]
-    );
-
-    if (assignmentCheck.rows.length === 0) {
-      return sendError(res, 'You are not assigned to this section', 403);
-    }
-
-    // Get students in this section
-    const studentsResult = await query(
-      `SELECT s.*, 
-              c.class_name,
-              sec.section_name
-       FROM students s
-       LEFT JOIN classes c ON s.class_id = c.id
-       LEFT JOIN sections sec ON s.section_id = sec.id
-       WHERE s.section_id = $1 
-         AND s.school_id = $2 
-         AND s.is_active = TRUE
-       ORDER BY 
-         CASE WHEN s.roll_number ~ '^[0-9]+$' 
-              THEN CAST(s.roll_number AS INTEGER) 
-              ELSE 999999 
-         END ASC, 
-         s.roll_number ASC, 
-         s.full_name ASC`,
-      [sectionId, schoolId]
-    );
-
-    sendSuccess(res, studentsResult.rows, 'Students retrieved successfully');
-  } catch (error) {
-    console.error('Get section students error:', error);
-    sendError(res, 'Failed to retrieve students', 500);
   }
-});
+);
 
 /**
  * GET /api/v1/teacher/my-sections
  * Get all sections assigned to the logged-in teacher
+ * 🔒 Protected: requireTeacher middleware (applied globally)
  */
 router.get('/my-sections', async (req, res) => {
   try {
     const userId = req.user.id;
     const schoolId = req.tenantSchoolId;
-
-    // Verify user is a teacher
-    if (req.user.role !== 'teacher') {
-      return sendError(res, 'Access denied. Teachers only.', 403);
-    }
 
     // Get teacher_id from user_id
     const teacherResult = await query(
@@ -121,22 +105,23 @@ router.get('/my-sections', async (req, res) => {
 /**
  * POST /api/v1/teacher/sections/:sectionId/attendance
  * Mark attendance for a student (teacher can mark their assigned students)
+ * 🔒 Protected: validateTeacherSectionAccess middleware
  */
-router.post('/sections/:sectionId/attendance', async (req, res) => {
-  try {
-    const { sectionId } = req.params;
-    const { studentId, date, status, notes, checkInTime } = req.body;
-    const userId = req.user.id;
-    const schoolId = req.tenantSchoolId;
+router.post(
+  '/sections/:sectionId/attendance',
+  validateTeacherSectionAccess('params', 'sectionId'),
+  async (req, res) => {
+    try {
+      const { sectionId } = req.params;
+      const { studentId, date, status, notes, checkInTime } = req.body;
+      const userId = req.user.id;
+      const schoolId = req.tenantSchoolId;
 
-    // Verify user is a teacher
-    if (req.user.role !== 'teacher') {
-      return sendError(res, 'Access denied. Teachers only.', 403);
-    }
+      // Authorization already validated by middleware
 
-    if (!studentId || !date || !status) {
-      return sendError(res, 'studentId, date, and status are required', 400);
-    }
+      if (!studentId || !date || !status) {
+        return sendError(res, 'studentId, date, and status are required', 400);
+      }
 
     // ✅ SECURITY FIX: Validate date is not in future
     const today = new Date();
@@ -173,29 +158,8 @@ router.post('/sections/:sectionId/attendance', async (req, res) => {
 
     console.log(`📝 Marking attendance: student=${studentId}, date=${date}, status=${status}, time=${timeToUse}`);
 
-    // Get teacher_id
-    const teacherResult = await query(
-      'SELECT id FROM teachers WHERE user_id = $1 AND school_id = $2 AND is_active = TRUE',
-      [userId, schoolId]
-    );
-
-    if (teacherResult.rows.length === 0) {
-      return sendError(res, 'Teacher profile not found', 404);
-    }
-
-    const teacherId = teacherResult.rows[0].id;
-
-    // Verify teacher is assigned to this section
-    const assignmentCheck = await query(
-      'SELECT id FROM teacher_class_assignments WHERE teacher_id = $1 AND section_id = $2',
-      [teacherId, sectionId]
-    );
-
-    if (assignmentCheck.rows.length === 0) {
-      return sendError(res, 'You are not assigned to this section', 403);
-    }
-
-    // Verify student belongs to this section
+    // 🔒 Authorization already validated by middleware
+    // Verify student belongs to this section (additional data validation)
     const studentCheck = await query(
       'SELECT id FROM students WHERE id = $1 AND section_id = $2 AND school_id = $3',
       [studentId, sectionId, schoolId]
@@ -262,6 +226,74 @@ router.post('/sections/:sectionId/attendance', async (req, res) => {
       );
 
       console.log(`✅ Created new attendance for student ${studentId} on ${date} as ${finalStatus}`);
+    }
+
+    // 📱 WHATSAPP: Send attendance alert to parent (teacher-marked attendance)
+    try {
+      // 🔒 CRITICAL: Only send WhatsApp for TODAY's attendance (prevent alerts for backdated entries)
+      const todayIST = getCurrentDateIST();
+      const isToday = date === todayIST;
+
+      if (!isToday) {
+        console.log(`⏭️ [TEACHER] Skipping WhatsApp alert: Attendance marked for ${date} (not today: ${todayIST})`);
+      } else if (finalStatus === 'late' || finalStatus === 'absent' || finalStatus === 'leave') {
+        // Only send WhatsApp for late, absent, or leave status
+        // Get student details for phone numbers
+        const studentResult = await query(
+          'SELECT full_name, guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
+          [studentId]
+        );
+
+        if (studentResult.rows.length > 0) {
+          const studentData = studentResult.rows[0];
+
+          // Try multiple phone fields in order of priority
+          let phoneToUse = null;
+          if (studentData.guardian_phone && studentData.guardian_phone.trim() !== '') {
+            phoneToUse = studentData.guardian_phone;
+          } else if (studentData.parent_phone && studentData.parent_phone.trim() !== '') {
+            phoneToUse = studentData.parent_phone;
+          } else if (studentData.mother_phone && studentData.mother_phone.trim() !== '') {
+            phoneToUse = studentData.mother_phone;
+          }
+
+          if (phoneToUse) {
+            // Get school name
+            const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+            const schoolName = schoolResult.rows[0]?.name || 'School';
+
+            console.log(`📱 [TEACHER] Sending WhatsApp alert to ${phoneToUse} for ${studentData.full_name} (${finalStatus})`);
+
+            const whatsappResult = await whatsappService.sendAttendanceAlert({
+              parentPhone: phoneToUse,
+              studentName: studentData.full_name,
+              studentId: studentId,
+              schoolId: schoolId,
+              status: finalStatus,
+              checkInTime: timeToUse,
+              schoolName: schoolName,
+              date: date
+            });
+
+            if (whatsappResult.success) {
+              if (whatsappResult.skipped) {
+                console.log(`⏭️ [TEACHER] WhatsApp message skipped: ${whatsappResult.reason}`);
+              } else {
+                console.log(`✅ [TEACHER] WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
+              }
+            } else {
+              console.error(`❌ [TEACHER] WhatsApp alert failed: ${whatsappResult.error}`);
+            }
+          } else {
+            console.log(`⚠️ [TEACHER] No phone number found for student ${studentId}, skipping WhatsApp alert`);
+          }
+        }
+      } else {
+        console.log(`ℹ️ [TEACHER] Student marked as '${finalStatus}', no WhatsApp alert needed`);
+      }
+    } catch (whatsappError) {
+      console.error('[TEACHER] WhatsApp alert error (non-fatal):', whatsappError);
+      // Don't fail the request if WhatsApp fails
     }
 
     sendSuccess(res, { studentId, date, status: finalStatus }, 'Attendance marked successfully');
@@ -388,6 +420,153 @@ router.get('/holidays', async (req, res) => {
     console.error('Error details:', error.message);
     console.error('Stack trace:', error.stack);
     sendError(res, 'Failed to retrieve holidays', 500);
+  }
+});
+
+/**
+ * GET /api/v1/teacher/dashboard/stats
+ * Get comprehensive dashboard statistics for teacher's form teacher classes
+ * Returns: student counts by gender, today's attendance stats, attendance percentage
+ */
+router.get('/dashboard/stats', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const schoolId = req.tenantSchoolId;
+
+    // Verify user is a teacher
+    if (req.user.role !== 'teacher') {
+      return sendError(res, 'Access denied. Teachers only.', 403);
+    }
+
+    // Get teacher_id
+    const teacherResult = await query(
+      'SELECT id FROM teachers WHERE user_id = $1 AND school_id = $2 AND is_active = TRUE',
+      [userId, schoolId]
+    );
+
+    if (teacherResult.rows.length === 0) {
+      return sendError(res, 'Teacher profile not found', 404);
+    }
+
+    const teacherId = teacherResult.rows[0].id;
+
+    // Get teacher's form teacher section IDs
+    const sectionsResult = await query(
+      `SELECT section_id FROM teacher_class_assignments
+       WHERE teacher_id = $1 AND is_form_teacher = TRUE`,
+      [teacherId]
+    );
+
+    const sectionIds = sectionsResult.rows.map(row => row.section_id);
+
+    if (sectionIds.length === 0) {
+      // No form teacher classes, return zeros
+      return sendSuccess(res, {
+        totalStudents: 0,
+        boysCount: 0,
+        girlsCount: 0,
+        presentToday: 0,
+        lateToday: 0,
+        absentToday: 0,
+        leaveToday: 0,
+        notMarkedToday: 0,
+        attendancePercentage: 100,
+      }, 'No form teacher classes assigned');
+    }
+
+    // Get today's date
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const dayOfWeek = today.getDay();
+    const isSunday = dayOfWeek === 0;
+
+    // Build section IDs string for SQL IN clause
+    const sectionIdsStr = sectionIds.map((id, idx) => `$${idx + 2}`).join(',');
+
+    // Get total student counts by gender
+    const studentCountsResult = await query(
+      `SELECT
+         COUNT(*) as total,
+         COUNT(CASE WHEN gender = 'male' THEN 1 END) as boys,
+         COUNT(CASE WHEN gender = 'female' THEN 1 END) as girls
+       FROM students
+       WHERE section_id IN (${sectionIdsStr})
+         AND school_id = $1
+         AND is_active = TRUE`,
+      [schoolId, ...sectionIds]
+    );
+
+    const studentCounts = studentCountsResult.rows[0];
+    const totalStudents = parseInt(studentCounts.total || 0);
+    const boysCount = parseInt(studentCounts.boys || 0);
+    const girlsCount = parseInt(studentCounts.girls || 0);
+
+    let todayStats = {
+      presentToday: 0,
+      lateToday: 0,
+      absentToday: 0,
+      leaveToday: 0,
+      notMarkedToday: totalStudents,
+      attendancePercentage: totalStudents > 0 ? 100 : 0,
+    };
+
+    // Only fetch today's attendance if not Sunday
+    if (!isSunday && totalStudents > 0) {
+      const attendanceResult = await query(
+        `SELECT
+           COUNT(CASE WHEN status = 'present' THEN 1 END) as present,
+           COUNT(CASE WHEN status = 'late' THEN 1 END) as late,
+           COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent,
+           COUNT(CASE WHEN status = 'leave' THEN 1 END) as leave,
+           COUNT(*) as total_marked
+         FROM attendance_logs al
+         JOIN students s ON al.student_id = s.id
+         WHERE s.section_id IN (${sectionIdsStr})
+           AND al.school_id = $1
+           AND al.date = $${sectionIds.length + 2}
+           AND s.is_active = TRUE`,
+        [schoolId, ...sectionIds, todayStr]
+      );
+
+      const attendance = attendanceResult.rows[0];
+      const presentCount = parseInt(attendance.present || 0);
+      const lateCount = parseInt(attendance.late || 0);
+      const absentCount = parseInt(attendance.absent || 0);
+      const leaveCount = parseInt(attendance.leave || 0);
+      const totalMarked = parseInt(attendance.total_marked || 0);
+      const notMarked = totalStudents - totalMarked;
+
+      // Calculate attendance percentage (present + late) / total * 100
+      const attendedCount = presentCount + lateCount;
+      const attendancePercentage = totalStudents > 0
+        ? Math.round((attendedCount / totalStudents) * 100)
+        : 100;
+
+      todayStats = {
+        presentToday: presentCount,
+        lateToday: lateCount,
+        absentToday: absentCount,
+        leaveToday: leaveCount,
+        notMarkedToday: notMarked,
+        attendancePercentage: attendancePercentage,
+      };
+    }
+
+    const responseData = {
+      totalStudents,
+      boysCount,
+      girlsCount,
+      ...todayStats,
+    };
+
+    console.log(`📊 Dashboard stats for teacher ${teacherId}: ${JSON.stringify(responseData)}`);
+
+    sendSuccess(res, responseData, 'Dashboard statistics retrieved successfully');
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
+    console.error('Error details:', error.message);
+    console.error('Stack trace:', error.stack);
+    sendError(res, 'Failed to retrieve dashboard statistics', 500);
   }
 });
 

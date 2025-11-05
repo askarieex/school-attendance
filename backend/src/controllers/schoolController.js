@@ -6,6 +6,7 @@ const DeviceCommand = require('../models/DeviceCommand');
 const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getCurrentDateIST, getCurrentTimeIST, istDateTimeToUTC } = require('../utils/timezone');
+const whatsappService = require('../services/whatsappService');
 
 /**
  * STUDENT MANAGEMENT
@@ -725,6 +726,67 @@ const markManualAttendance = async (req, res) => {
     } catch (wsError) {
       console.error('WebSocket emission error (non-fatal):', wsError);
       // Don't fail the request if WebSocket fails
+    }
+
+    // 📱 WHATSAPP: Send attendance alert to parent (if enabled and conditions met)
+    try {
+      // 🔒 CRITICAL: Only send WhatsApp for TODAY's attendance (prevent alerts for backdated entries)
+      const todayIST = getCurrentDateIST();
+      const isToday = date === todayIST;
+
+      if (!isToday) {
+        console.log(`⏭️ Skipping WhatsApp alert: Attendance marked for ${date} (not today: ${todayIST})`);
+      } else {
+        // Proceed with WhatsApp for today's attendance
+        const student = await Student.findById(studentId);
+        const school = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+        const schoolName = school.rows[0]?.name || 'School';
+
+        // Only send WhatsApp for late, absent, or leave status (not for regular present)
+        if (calculatedStatus === 'late' || calculatedStatus === 'absent' || calculatedStatus === 'leave') {
+          // Try multiple phone fields in order of priority: guardian_phone > parent_phone > mother_phone
+          let phoneToUse = null;
+          if (student.guardian_phone && student.guardian_phone.trim() !== '') {
+            phoneToUse = student.guardian_phone;
+          } else if (student.parent_phone && student.parent_phone.trim() !== '') {
+            phoneToUse = student.parent_phone;
+          } else if (student.mother_phone && student.mother_phone.trim() !== '') {
+            phoneToUse = student.mother_phone;
+          }
+
+          if (phoneToUse) {
+            console.log(`📱 Sending WhatsApp alert to ${phoneToUse} for ${student.full_name} (${calculatedStatus})`);
+
+            const whatsappResult = await whatsappService.sendAttendanceAlert({
+              parentPhone: phoneToUse,
+              studentName: student.full_name,
+              studentId: studentId,
+              schoolId: schoolId,
+              status: calculatedStatus,
+              checkInTime: timeToUse,
+              schoolName: schoolName,
+              date: date
+            });
+
+            if (whatsappResult.success) {
+              if (whatsappResult.skipped) {
+                console.log(`⏭️ WhatsApp message skipped: ${whatsappResult.reason}`);
+              } else {
+                console.log(`✅ WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
+              }
+            } else {
+              console.error(`❌ WhatsApp alert failed: ${whatsappResult.error}`);
+            }
+          } else {
+            console.log(`⚠️ No phone number found for ${student.full_name} (checked guardian_phone, parent_phone, mother_phone), skipping WhatsApp alert`);
+          }
+        } else {
+          console.log(`ℹ️ Status is '${calculatedStatus}', skipping WhatsApp alert (only send for late/absent/leave)`);
+        }
+      }
+    } catch (whatsappError) {
+      console.error('WhatsApp alert error (non-fatal):', whatsappError);
+      // Don't fail the request if WhatsApp fails
     }
 
     sendSuccess(
