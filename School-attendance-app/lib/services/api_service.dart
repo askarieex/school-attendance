@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async'; // ✅ BUG FIX: Add for TimeoutException
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 
@@ -14,6 +15,33 @@ class ApiService {
   // ✅ PERFORMANCE: Add HTTP cache (30 second TTL)
   final Map<String, _CacheEntry> _cache = {};
   static const _cacheDuration = Duration(seconds: 30);
+
+  // ✅ BUG FIX: Add cache cleanup timer
+  Timer? _cacheCleanupTimer;
+
+  // Constructor - ✅ BUG FIX: Start cache cleanup
+  ApiService() {
+    // Clean cache every 5 minutes to prevent memory growth
+    _cacheCleanupTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => _cleanupExpiredCache(),
+    );
+  }
+
+  // ✅ BUG FIX: Cleanup expired cache entries
+  void _cleanupExpiredCache() {
+    final now = DateTime.now();
+    final beforeCount = _cache.length;
+    _cache.removeWhere((key, entry) => now.isAfter(entry.expiresAt));
+    final afterCount = _cache.length;
+    
+    if (beforeCount != afterCount) {
+      print('🧹 Cache cleanup: Removed ${beforeCount - afterCount} expired entries, $afterCount remaining');
+    }
+    
+    // ✅ CRITICAL FIX: Enforce cache size limit
+    _enforceCacheSizeLimit();
+  }
 
   // Set tokens after login
   void setTokens(String accessToken, String refreshToken) {
@@ -87,6 +115,7 @@ class ApiService {
   }
   
   // POST request
+  // POST request - ✅ BUG FIX: Add timeout
   Future<Map<String, dynamic>> post(
     String endpoint, 
     Map<String, dynamic> body, {
@@ -98,6 +127,11 @@ class ApiService {
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
           body: jsonEncode(body),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out after 30 seconds');
+          },
         ),
         requiresAuth: requiresAuth,
       );
@@ -132,7 +166,15 @@ class ApiService {
 
     try {
       final data = await _requestWithRetry(
-        () => http.get(url, headers: _getHeaders(requiresAuth: requiresAuth)),
+        () => http.get(
+          url, 
+          headers: _getHeaders(requiresAuth: requiresAuth)
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out after 30 seconds');
+          },
+        ),
         requiresAuth: requiresAuth,
       );
 
@@ -162,7 +204,12 @@ class ApiService {
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
           body: jsonEncode(body),
-        ),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out after 30 seconds');
+          },
+        ), // ✅ CRITICAL FIX: Added timeout
         requiresAuth: requiresAuth,
       );
     } catch (e) {
@@ -181,7 +228,12 @@ class ApiService {
         () => http.delete(
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
-        ),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out after 30 seconds');
+          },
+        ), // ✅ CRITICAL FIX: Added timeout
         requiresAuth: requiresAuth,
       );
     } catch (e) {
@@ -242,6 +294,32 @@ class ApiService {
       throw ValidationException(message);
     } else {
       throw ApiException('Error ${response.statusCode}: $message');
+    }
+  }
+
+  // ✅ BUG FIX: Dispose method to cleanup resources
+  void dispose() {
+    _cacheCleanupTimer?.cancel();
+    _cache.clear();
+    clearTokens();
+    print('🧹 API Service disposed');
+  }
+  
+  // ✅ CRITICAL FIX: Limit cache size to prevent memory bloat
+  void _enforceCacheSizeLimit() {
+    const int maxCacheSize = 100;
+    
+    if (_cache.length > maxCacheSize) {
+      // Sort by expiration time and remove oldest entries
+      final sortedEntries = _cache.entries.toList()
+        ..sort((a, b) => a.value.expiresAt.compareTo(b.value.expiresAt));
+      
+      final toRemove = _cache.length - maxCacheSize;
+      for (int i = 0; i < toRemove; i++) {
+        _cache.remove(sortedEntries[i].key);
+      }
+      
+      print('🧹 Cache size limit enforced: removed $toRemove entries, ${_cache.length} remaining');
     }
   }
 }

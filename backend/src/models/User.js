@@ -3,10 +3,79 @@ const { hashPassword } = require('../utils/auth');
 
 class User {
   /**
+   * ✅ SECURITY FIX: Validate password strength
+   * For development: Relaxed validation (minimum 6 characters)
+   * For production: Strict validation (uncomment strict rules)
+   */
+  static validatePasswordStrength(password) {
+    // Check password exists
+    if (!password || typeof password !== 'string') {
+      throw new Error('Password is required');
+    }
+
+    // Minimum length (relaxed for development)
+    if (password.length < 6) {
+      throw new Error('Password must be at least 6 characters long');
+    }
+
+    // Maximum length (prevent DOS attacks)
+    if (password.length > 128) {
+      throw new Error('Password cannot exceed 128 characters');
+    }
+
+    // DEVELOPMENT MODE: Basic validation only
+    // For stricter validation, uncomment the rules below
+
+    /* PRODUCTION MODE - Uncomment for strict validation:
+
+    // Must contain uppercase letter
+    if (!/[A-Z]/.test(password)) {
+      throw new Error('Password must contain at least one uppercase letter');
+    }
+
+    // Must contain lowercase letter
+    if (!/[a-z]/.test(password)) {
+      throw new Error('Password must contain at least one lowercase letter');
+    }
+
+    // Must contain number
+    if (!/[0-9]/.test(password)) {
+      throw new Error('Password must contain at least one number');
+    }
+
+    // Must contain special character
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      throw new Error('Password must contain at least one special character (!@#$%^&*...)');
+    }
+
+    // Check against common weak passwords
+    const commonPasswords = [
+      'password', 'password123', '12345678', 'qwerty', 'abc123',
+      'admin', 'admin123', 'letmein', 'welcome', 'monkey',
+      'password1', '123456789', 'Password1', 'Password123'
+    ];
+
+    if (commonPasswords.includes(password.toLowerCase())) {
+      throw new Error('Password is too common. Please choose a stronger password');
+    }
+
+    // Check for sequential characters (123, abc, etc.)
+    if (/123|234|345|456|567|678|789|abc|bcd|cde|def/i.test(password)) {
+      throw new Error('Password cannot contain sequential characters (123, abc, etc.)');
+    }
+    */
+
+    return true;
+  }
+
+  /**
    * Create a new user
    */
   static async create(userData) {
     const { email, password, role, schoolId, fullName } = userData;
+
+    // ✅ SECURITY FIX: Validate password strength before hashing
+    this.validatePasswordStrength(password);
 
     // Hash password
     const passwordHash = await hashPassword(password);

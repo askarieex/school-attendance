@@ -5,6 +5,7 @@ const classController = require('../controllers/classController');
 const teacherController = require('../controllers/teacherController');
 const academicYearController = require('../controllers/academicYearController');
 const reportsController = require('../controllers/reportsController');
+const bulkImportController = require('../controllers/bulkImportController');
 const { authenticate, requireSchoolAdmin } = require('../middleware/auth');
 const { enforceSchoolTenancy } = require('../middleware/multiTenant');
 const {
@@ -39,6 +40,9 @@ router.post('/students', validateStudent.create, schoolController.createStudent)
 
 // POST /api/v1/school/students/import
 router.post('/students/import', schoolController.importStudents);
+
+// POST /api/v1/school/students/bulk-import - Bulk import from Excel
+router.post('/students/bulk-import', bulkImportController.upload.single('file'), bulkImportController.bulkImportStudents);
 
 // GET /api/v1/school/students/:id (with validation)
 router.get('/students/:id', validateId, schoolController.getStudent);
@@ -237,6 +241,12 @@ router.get('/academic-years', academicYearController.getAcademicYears);
 
 // GET /api/v1/school/academic-years/current
 router.get('/academic-years/current', academicYearController.getCurrentAcademicYear);
+
+// GET /api/v1/school/academic-years/promotion/preview - Preview how many students will be promoted
+router.get('/academic-years/promotion/preview', academicYearController.getPromotionPreview);
+
+// POST /api/v1/school/academic-years/promotion - Promote students to new academic year
+router.post('/academic-years/promotion', academicYearController.promoteStudents);
 
 // POST /api/v1/school/academic-years
 router.post('/academic-years', academicYearController.createAcademicYear);

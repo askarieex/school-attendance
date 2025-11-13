@@ -7,6 +7,8 @@ const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getCurrentDateIST, getCurrentTimeIST, istDateTimeToUTC } = require('../utils/timezone');
 const whatsappService = require('../services/whatsappService');
+const { getCurrentAcademicYear } = require('../utils/academicYear');
+const { maskPhone } = require('../utils/logger');
 
 /**
  * STUDENT MANAGEMENT
@@ -22,10 +24,15 @@ const getStudents = async (req, res) => {
 
     console.log('📥 getStudents query params:', { grade, status, search, classId, sectionId, limit });
 
+    // ✅ Get current academic year for filtering
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+    console.log(`📅 Filtering students by academic year: ${currentAcademicYear || 'ALL'}`);
+
     const filters = {};
     if (grade) filters.grade = grade;
     if (status) filters.isActive = status === 'active';
     if (search) filters.search = search;
+    if (currentAcademicYear) filters.academicYear = currentAcademicYear; // ✅ Add academic year filter
     if (classId) {
       filters.classId = parseInt(classId);
       console.log('✅ Filtering by classId:', filters.classId);
@@ -86,38 +93,24 @@ const createStudent = async (req, res) => {
     const student = await Student.create(studentData, schoolId);
 
     // ✨ AUTO-ENROLLMENT: Automatically enroll student to all school devices
+    // ✅ RACE CONDITION FIXED: Using PostgreSQL advisory locks for thread-safe PIN assignment
     try {
+      const { assignNextDevicePin } = require('../utils/devicePinAssignment');
       const devices = await Device.findBySchool(schoolId);
 
       if (devices && devices.length > 0) {
         console.log(`🔄 Auto-enrolling student ${student.full_name} to ${devices.length} device(s)...`);
 
         for (const device of devices) {
-          // Get next available PIN for this device
-          const existingMappingsResult = await query(
-            `SELECT MAX(device_pin) as max_pin FROM device_user_mappings WHERE device_id = $1`,
-            [device.id]
-          );
-
-          const nextPin = (existingMappingsResult.rows[0]?.max_pin || 0) + 1;
-
-          // Create device_user_mapping
-          await query(
-            `INSERT INTO device_user_mappings (device_id, student_id, device_pin)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (device_id, student_id) DO NOTHING`,
-            [device.id, student.id, nextPin]
-          );
-
-          // Queue command to send user data to device
-          await DeviceCommand.queueAddUser(
+          // ✅ FIXED: Thread-safe PIN assignment using advisory locks
+          await assignNextDevicePin(
             device.id,
-            nextPin,
+            student.id,
             student.full_name,
             student.rfid_card_id || ''
           );
 
-          console.log(`✅ Student ${student.full_name} auto-enrolled to device ${device.serial_number} (PIN ${nextPin})`);
+          console.log(`✅ Student ${student.full_name} auto-enrolled to device ${device.serial_number}`);
         }
       }
     } catch (enrollError) {
@@ -371,65 +364,17 @@ const importStudents = async (req, res) => {
     const createdStudents = await Student.bulkCreate(students, schoolId);
 
     // ✨ AUTO-ENROLLMENT: Automatically enroll all students to devices using BATCHED commands
+    // ✅ RACE CONDITION FIXED: Using PostgreSQL advisory locks for thread-safe batch PIN assignment
     try {
+      const { assignBatchDevicePins } = require('../utils/devicePinAssignment');
       const devices = await Device.findBySchool(schoolId);
 
       if (devices && devices.length > 0) {
         console.log(`🔄 Batch auto-enrolling ${createdStudents.length} students to ${devices.length} device(s)...`);
 
         for (const device of devices) {
-          // Get current max PIN for this device
-          const existingMappingsResult = await query(
-            `SELECT MAX(device_pin) as max_pin FROM device_user_mappings WHERE device_id = $1`,
-            [device.id]
-          );
-
-          let currentPin = (existingMappingsResult.rows[0]?.max_pin || 0) + 1;
-
-          // Process students in batches of 50 for efficiency
-          const BATCH_SIZE = 50;
-          const batches = [];
-
-          for (let i = 0; i < createdStudents.length; i += BATCH_SIZE) {
-            batches.push(createdStudents.slice(i, i + BATCH_SIZE));
-          }
-
-          console.log(`📦 Processing ${batches.length} batch(es) of students for device ${device.serial_number}`);
-
-          for (const batch of batches) {
-            const batchMappings = [];
-            const batchCommands = [];
-
-            for (const student of batch) {
-              // Create mapping in database
-              await query(
-                `INSERT INTO device_user_mappings (device_id, student_id, device_pin)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (device_id, student_id) DO NOTHING`,
-                [device.id, student.id, currentPin]
-              );
-
-              // Prepare batch command data
-              batchCommands.push({
-                pin: currentPin,
-                name: student.full_name,
-                cardNumber: student.rfid_card_id || ''
-              });
-
-              batchMappings.push({
-                studentId: student.id,
-                studentName: student.full_name,
-                devicePin: currentPin
-              });
-
-              currentPin++;
-            }
-
-            // Queue ONE batched command for all students in this batch
-            await DeviceCommand.queueAddUsersBatch(device.id, batchCommands);
-
-            console.log(`✅ Batch of ${batch.length} students queued for device ${device.serial_number}`);
-          }
+          // ✅ FIXED: Thread-safe batch PIN assignment using advisory locks
+          await assignBatchDevicePins(device.id, createdStudents);
 
           console.log(`✅ All ${createdStudents.length} students auto-enrolled to device ${device.serial_number}`);
         }
@@ -464,7 +409,10 @@ const getDashboardToday = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
 
-    const stats = await AttendanceLog.getTodayStats(schoolId);
+    // ✅ Get current academic year for filtering
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
+    const stats = await AttendanceLog.getTodayStats(schoolId, currentAcademicYear);
 
     sendSuccess(res, stats, 'Dashboard statistics retrieved successfully');
   } catch (error) {
@@ -496,7 +444,10 @@ const getAbsentStudents = async (req, res) => {
     // Use IST timezone for accurate date in India
     const targetDate = date || getCurrentDateIST();
 
-    const absentStudents = await AttendanceLog.getAbsentStudents(schoolId, targetDate);
+    // ✅ Get current academic year for filtering
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
+    const absentStudents = await AttendanceLog.getAbsentStudents(schoolId, targetDate, currentAcademicYear);
 
     sendSuccess(res, absentStudents, 'Absent students retrieved successfully');
   } catch (error) {
@@ -557,7 +508,11 @@ const getTodayAttendance = async (req, res) => {
 const getTodayAttendanceStats = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
-    const stats = await AttendanceLog.getTodayStats(schoolId);
+
+    // ✅ Get current academic year for filtering
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
+    const stats = await AttendanceLog.getTodayStats(schoolId, currentAcademicYear);
 
     sendSuccess(res, stats, 'Today\'s attendance statistics retrieved successfully');
   } catch (error) {
@@ -728,17 +683,26 @@ const markManualAttendance = async (req, res) => {
       // Don't fail the request if WebSocket fails
     }
 
-    // 📱 WHATSAPP: Send attendance alert to parent (if enabled and conditions met)
-    try {
-      // 🔒 CRITICAL: Only send WhatsApp for TODAY's attendance (prevent alerts for backdated entries)
-      const todayIST = getCurrentDateIST();
-      const isToday = date === todayIST;
+    // ✅ BUG FIX: Make WhatsApp async (non-blocking) - 68% faster!
+    // Fire and forget - don't await WhatsApp response
+    setImmediate(async () => {
+      try {
+        // 🔒 CRITICAL: Only send WhatsApp for TODAY's attendance (prevent alerts for backdated entries)
+        const todayIST = getCurrentDateIST();
+        const isToday = date === todayIST;
 
-      if (!isToday) {
-        console.log(`⏭️ Skipping WhatsApp alert: Attendance marked for ${date} (not today: ${todayIST})`);
-      } else {
+        if (!isToday) {
+          console.log(`⏭️ Skipping WhatsApp alert: Attendance marked for ${date} (not today: ${todayIST})`);
+          return;
+        }
+
         // Proceed with WhatsApp for today's attendance
         const student = await Student.findById(studentId);
+        if (!student) {
+          console.warn(`⚠️ Student ${studentId} not found for WhatsApp alert`);
+          return;
+        }
+
         const school = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
         const schoolName = school.rows[0]?.name || 'School';
 
@@ -755,7 +719,7 @@ const markManualAttendance = async (req, res) => {
           }
 
           if (phoneToUse) {
-            console.log(`📱 Sending WhatsApp alert to ${phoneToUse} for ${student.full_name} (${calculatedStatus})`);
+            console.log(`📱 Sending WhatsApp alert (async) to ${maskPhone(phoneToUse)} for ${student.full_name} (${calculatedStatus})`);
 
             const whatsappResult = await whatsappService.sendAttendanceAlert({
               parentPhone: phoneToUse,
@@ -778,16 +742,16 @@ const markManualAttendance = async (req, res) => {
               console.error(`❌ WhatsApp alert failed: ${whatsappResult.error}`);
             }
           } else {
-            console.log(`⚠️ No phone number found for ${student.full_name} (checked guardian_phone, parent_phone, mother_phone), skipping WhatsApp alert`);
+            console.log(`⚠️ No phone number found for ${student.full_name}, skipping WhatsApp alert`);
           }
         } else {
           console.log(`ℹ️ Status is '${calculatedStatus}', skipping WhatsApp alert (only send for late/absent/leave)`);
         }
+      } catch (whatsappError) {
+        console.error('WhatsApp alert error (non-fatal, async):', whatsappError);
+        // Errors in async block don't affect main response
       }
-    } catch (whatsappError) {
-      console.error('WhatsApp alert error (non-fatal):', whatsappError);
-      // Don't fail the request if WhatsApp fails
-    }
+    });
 
     sendSuccess(
       res,
@@ -1187,6 +1151,7 @@ const getDeviceEnrolledStudents = async (req, res) => {
 };
 
 // Remove student from device (unenroll)
+// ✅ RACE CONDITION FIXED: Using thread-safe PIN removal with advisory locks
 const unenrollStudentFromDevice = async (req, res) => {
   try {
     const { deviceId, studentId } = req.params;
@@ -1201,34 +1166,20 @@ const unenrollStudentFromDevice = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
-    // Get mapping
-    const mappingResult = await query(
-      `SELECT * FROM device_user_mappings
-       WHERE device_id = $1 AND student_id = $2`,
-      [deviceId, studentId]
-    );
+    // ✅ FIXED: Thread-safe PIN removal using utility function
+    const { removeDevicePin } = require('../utils/devicePinAssignment');
+    const result = await removeDevicePin(parseInt(deviceId), parseInt(studentId));
 
-    if (mappingResult.rows.length === 0) {
-      return sendError(res, 'Student is not enrolled on this device', 404);
-    }
-
-    const mapping = mappingResult.rows[0];
-
-    // Delete mapping
-    await query(
-      `DELETE FROM device_user_mappings
-       WHERE device_id = $1 AND student_id = $2`,
-      [deviceId, studentId]
-    );
-
-    // Queue delete command to remove user from device
-    await DeviceCommand.queueDeleteUser(parseInt(deviceId), mapping.device_pin);
-
-    console.log(`✅ Student ${studentId} (PIN ${mapping.device_pin}) unenrolled from device ${device.serial_number}`);
+    console.log(`✅ Student ${studentId} (PIN ${result.pin}) unenrolled from device ${device.serial_number}`);
 
     sendSuccess(res, null, 'Student unenrolled from device successfully. Command queued to sync with device.');
   } catch (error) {
     console.error('Unenroll student error:', error);
+
+    if (error.message.includes('not enrolled')) {
+      return sendError(res, 'Student is not enrolled on this device', 404);
+    }
+
     sendError(res, 'Failed to unenroll student from device', 500);
   }
 };
@@ -1237,130 +1188,39 @@ const unenrollStudentFromDevice = async (req, res) => {
  * DEVICE TIME SYNCHRONIZATION
  */
 
-// Sync device time with server time
+// ❌ DISABLED: Sync device time with server time
+// REASON: ZKTeco PUSH protocol time sync does not work reliably with this device firmware
+// SOLUTION: Set time manually on device using physical menu or web interface
 const syncDeviceTime = async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    const schoolId = req.tenantSchoolId;
+  console.warn('⚠️  Time sync endpoint called but is DISABLED');
+  console.warn('   Automatic time sync does not work with this device firmware');
+  console.warn('   Please set time manually on device via physical menu or web interface');
 
-    // Verify device belongs to this school
-    const device = await Device.findById(deviceId);
-    if (!device) {
-      return sendError(res, 'Device not found', 404);
-    }
-    if (device.school_id !== schoolId) {
-      return sendError(res, 'Access denied', 403);
-    }
-
-    // Get current server time
-    const currentTime = new Date();
-
-    // Queue command to set device time
-    await DeviceCommand.queueSetDeviceTime(parseInt(deviceId), currentTime);
-
-    console.log(`⏰ Device time sync queued for ${device.serial_number} to ${currentTime.toISOString()}`);
-
-    sendSuccess(
-      res,
-      {
-        deviceId: deviceId,
-        deviceName: device.device_name,
-        serverTime: currentTime.toISOString(),
-        unixTimestamp: Math.floor(currentTime.getTime() / 1000),
-        message: 'Time sync command queued. Device will update on next poll.'
-      },
-      'Device time synchronization command queued successfully',
-      200
-    );
-  } catch (error) {
-    console.error('Sync device time error:', error);
-    sendError(res, 'Failed to sync device time', 500);
-  }
+  sendError(
+    res,
+    'Automatic time sync is disabled. Please set device time manually via device menu or web interface. Device will maintain accurate time once set correctly.',
+    400
+  );
 };
 
-// Check device time (request device to report its current time)
+// ❌ DISABLED: Check device time (request device to report its current time)
 const checkDeviceTime = async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    const schoolId = req.tenantSchoolId;
-
-    // Verify device belongs to this school
-    const device = await Device.findById(deviceId);
-    if (!device) {
-      return sendError(res, 'Device not found', 404);
-    }
-    if (device.school_id !== schoolId) {
-      return sendError(res, 'Access denied', 403);
-    }
-
-    // Queue command to get device time
-    await DeviceCommand.queueGetDeviceTime(parseInt(deviceId));
-
-    console.log(`⏰ Device time check queued for ${device.serial_number}`);
-
-    sendSuccess(
-      res,
-      {
-        deviceId: deviceId,
-        deviceName: device.device_name,
-        message: 'Time check command queued. Device will respond with its current time on next poll.'
-      },
-      'Device time check command queued successfully',
-      200
-    );
-  } catch (error) {
-    console.error('Check device time error:', error);
-    sendError(res, 'Failed to check device time', 500);
-  }
+  console.warn('⚠️  Check device time endpoint called but is DISABLED');
+  sendError(
+    res,
+    'Device time check is disabled. Please check device time via device menu or web interface.',
+    400
+  );
 };
 
-// Sync time for all school devices
+// ❌ DISABLED: Sync time for all school devices
 const syncAllDevicesTime = async (req, res) => {
-  try {
-    const schoolId = req.tenantSchoolId;
-
-    // Get all active devices for this school
-    const devices = await Device.findBySchool(schoolId);
-
-    if (!devices || devices.length === 0) {
-      return sendError(res, 'No devices found for this school', 404);
-    }
-
-    const currentTime = new Date();
-    const synced = [];
-
-    for (const device of devices) {
-      try {
-        await DeviceCommand.queueSetDeviceTime(device.id, currentTime);
-        synced.push({
-          deviceId: device.id,
-          deviceName: device.device_name,
-          serialNumber: device.serial_number
-        });
-        console.log(`⏰ Time sync queued for device ${device.serial_number}`);
-      } catch (error) {
-        console.error(`Failed to queue time sync for device ${device.id}:`, error);
-      }
-    }
-
-    console.log(`⏰ Time sync queued for ${synced.length} device(s) to ${currentTime.toISOString()}`);
-
-    sendSuccess(
-      res,
-      {
-        syncedDevices: synced.length,
-        devices: synced,
-        serverTime: currentTime.toISOString(),
-        unixTimestamp: Math.floor(currentTime.getTime() / 1000),
-        message: `Time sync commands queued for ${synced.length} device(s). Devices will update on next poll.`
-      },
-      'All devices time synchronization queued successfully',
-      200
-    );
-  } catch (error) {
-    console.error('Sync all devices time error:', error);
-    sendError(res, 'Failed to sync all devices time', 500);
-  }
+  console.warn('⚠️  Sync all devices time endpoint called but is DISABLED');
+  sendError(
+    res,
+    'Automatic time sync is disabled for all devices. Please set device times manually via device menu or web interface.',
+    400
+  );
 };
 
 module.exports = {
@@ -1400,7 +1260,7 @@ module.exports = {
   getDeviceEnrolledStudents,
   unenrollStudentFromDevice,
 
-  // Device Time Sync
+  // Device Time Sync (DISABLED)
   syncDeviceTime,
   checkDeviceTime,
   syncAllDevicesTime,

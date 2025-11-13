@@ -117,6 +117,13 @@ static async create(studentData, schoolId) {
       params.push(true);
     }
 
+    // ✅ Filter by academic year (if provided)
+    if (filters.academicYear) {
+      paramCount++;
+      whereClause += ` AND s.academic_year = $${paramCount}`;
+      params.push(filters.academicYear);
+    }
+
     // Filter by class
     if (filters.classId) {
       paramCount++;
@@ -278,7 +285,16 @@ static async create(studentData, schoolId) {
   /**
    * Get students by section
    */
-  static async findBySection(sectionId) {
+  static async findBySection(sectionId, academicYear = null) {
+    let whereClause = 'WHERE s.section_id = $1 AND s.is_active = TRUE';
+    const params = [sectionId];
+
+    // ✅ Filter by academic year if provided
+    if (academicYear) {
+      whereClause += ' AND s.academic_year = $2';
+      params.push(academicYear);
+    }
+
     const result = await query(
       `SELECT s.*,
         c.class_name,
@@ -286,14 +302,14 @@ static async create(studentData, schoolId) {
        FROM students s
        JOIN classes c ON s.class_id = c.id
        JOIN sections sec ON s.section_id = sec.id
-       WHERE s.section_id = $1 AND s.is_active = TRUE
-       ORDER BY CASE WHEN s.roll_number ~ '^[0-9]+$' 
-                     THEN CAST(s.roll_number AS INTEGER) 
-                     ELSE 999999 
-                END ASC, 
-                s.roll_number ASC, 
+       ${whereClause}
+       ORDER BY CASE WHEN s.roll_number ~ '^[0-9]+$'
+                     THEN CAST(s.roll_number AS INTEGER)
+                     ELSE 999999
+                END ASC,
+                s.roll_number ASC,
                 s.full_name ASC`,
-      [sectionId]
+      params
     );
 
     return result.rows;

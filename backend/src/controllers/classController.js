@@ -127,7 +127,17 @@ const deleteClass = async (req, res) => {
 const getClassStatistics = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
-    const { academicYear = '2025-2026' } = req.query;
+    const { getCurrentAcademicYear } = require('../utils/academicYear');
+    
+    // ✅ FIX: Get current academic year dynamically instead of hardcoded '2025-2026'
+    let academicYear = req.query.academicYear;
+    if (!academicYear) {
+      academicYear = await getCurrentAcademicYear(schoolId);
+    }
+    
+    if (!academicYear) {
+      return sendError(res, 'No active academic year found. Please set current academic year.', 400);
+    }
 
     const stats = await Class.getStatistics(schoolId, academicYear);
 

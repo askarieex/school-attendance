@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { comparePassword, generateAccessToken, generateRefreshToken } = require('../utils/auth');
 const { sendSuccess, sendError } = require('../utils/response');
+const { getCurrentAcademicYear } = require('../utils/academicYear');
 
 /**
  * Login endpoint for both Super Admin and School Admin
@@ -32,9 +33,11 @@ const login = async (req, res) => {
     // Update last login
     await User.updateLastLogin(user.id);
 
-    // ✅ FIX: Get school name for the login response
+    // ✅ FIX: Get school name and current academic year for the login response
     const { query } = require('../config/database');
     let schoolName = null;
+    let currentAcademicYear = null;
+
     if (user.school_id) {
       const schoolResult = await query(
         'SELECT name FROM schools WHERE id = $1',
@@ -43,6 +46,9 @@ const login = async (req, res) => {
       if (schoolResult.rows.length > 0) {
         schoolName = schoolResult.rows[0].name;
       }
+
+      // Get current academic year
+      currentAcademicYear = await getCurrentAcademicYear(user.school_id);
     }
 
     // Generate tokens
@@ -66,6 +72,7 @@ const login = async (req, res) => {
           schoolId: user.school_id,
           fullName: user.full_name,
           school_name: schoolName,  // ✅ FIX: Add school_name to login response
+          currentAcademicYear: currentAcademicYear,  // ✅ FIX: Add current academic year
         },
         accessToken,
         refreshToken,
@@ -136,7 +143,7 @@ const getMe = async (req, res) => {
     // ✅ FIX: Create a mutable response object instead of modifying the user object
     const responseData = { ...user };
 
-    // Get school name if user has a school_id
+    // Get school name and current academic year if user has a school_id
     if (user.school_id) {
       const schoolResult = await query(
         'SELECT name FROM schools WHERE id = $1',
@@ -146,6 +153,10 @@ const getMe = async (req, res) => {
       if (schoolResult.rows.length > 0) {
         responseData.school_name = schoolResult.rows[0].name;
       }
+
+      // Get current academic year
+      const currentYear = await getCurrentAcademicYear(user.school_id);
+      responseData.currentAcademicYear = currentYear;
     }
 
     // If user is a teacher, include their teacher profile and assignments
@@ -162,8 +173,11 @@ const getMe = async (req, res) => {
         if (teacherResult.rows.length > 0) {
           const teacherId = teacherResult.rows[0].id;
 
-          // ✅ FIX: Get teacher assignments with error handling
-          const assignments = await Teacher.getAssignments(teacherId, '2025-2026');
+          // Get current academic year for assignments
+          const currentYear = responseData.currentAcademicYear || await getCurrentAcademicYear(user.school_id);
+
+          // ✅ FIX: Get teacher assignments with dynamic academic year
+          const assignments = await Teacher.getAssignments(teacherId, currentYear);
 
           // Add teacher data to response
           responseData.teacher_id = teacherId;

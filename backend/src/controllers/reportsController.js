@@ -189,33 +189,40 @@ const getMonthlyReport = async (req, res) => {
       }
     });
 
-    // 3. Get class-wise breakdown
+    // ✅ CRITICAL FIX: Use single JOIN query instead of O(n²) filtering (Bug #4)
+    // Old code had nested loops: for each class, filter all students, then filter all logs
+    // This caused 30-60 second timeouts for large schools
     const classWiseData = [];
-    const classesResponse = await query(
-      `SELECT c.id, c.class_name, COUNT(DISTINCT s.id) as student_count
+    const classWiseQuery = await query(
+      `SELECT
+        c.id as class_id,
+        c.class_name,
+        COUNT(DISTINCT s.id) as total_students,
+        COUNT(DISTINCT CASE
+          WHEN al.status IN ('present', 'late') THEN al.id
+          ELSE NULL
+        END) as present_count
        FROM classes c
        LEFT JOIN students s ON c.id = s.class_id AND s.school_id = $1 AND s.is_active = TRUE
+       LEFT JOIN attendance_logs al ON s.id = al.student_id
+         AND al.school_id = $1
+         AND al.date >= $2
+         AND al.date <= $3
        WHERE c.school_id = $1 AND c.is_active = TRUE
        GROUP BY c.id, c.class_name
        ORDER BY c.class_name`,
-      [schoolId]
+      [schoolId, startDate, endDate]
     );
 
-    for (const cls of classesResponse.rows) {
-      const classStudents = allStudents.students.filter(s => s.class_id === cls.id);
-      const classLogs = attendanceLogs.logs.filter(log => {
-        const student = allStudents.students.find(s => s.id === log.student_id);
-        return student && student.class_id === cls.id;
-      });
-      
-      const presentCount = classLogs.filter(log => log.status === 'present' || log.status === 'late').length;
-      const maxPossible = classStudents.length * totalWorkingDays;
+    for (const cls of classWiseQuery.rows) {
+      const maxPossible = parseInt(cls.total_students) * totalWorkingDays;
+      const presentCount = parseInt(cls.present_count);
       const classAttendance = maxPossible > 0 ? ((presentCount / maxPossible) * 100).toFixed(1) : 0;
-      
+
       classWiseData.push({
-        classId: cls.id,
+        classId: cls.class_id,
         className: cls.class_name,
-        totalStudents: classStudents.length,
+        totalStudents: parseInt(cls.total_students),
         presentCount,
         absentCount: maxPossible - presentCount,
         attendanceRate: parseFloat(classAttendance)
@@ -247,26 +254,38 @@ const getMonthlyReport = async (req, res) => {
       }
     }
 
-    // 5. Gender-wise breakdown
-    const maleStudents = allStudents.students.filter(s => s.gender === 'male');
-    const femaleStudents = allStudents.students.filter(s => s.gender === 'female');
-    
-    const maleLogs = attendanceLogs.logs.filter(log => {
-      const student = allStudents.students.find(s => s.id === log.student_id);
-      return student && student.gender === 'male' && (log.status === 'present' || log.status === 'late');
-    });
-    
-    const femaleLogs = attendanceLogs.logs.filter(log => {
-      const student = allStudents.students.find(s => s.id === log.student_id);
-      return student && student.gender === 'female' && (log.status === 'present' || log.status === 'late');
-    });
+    // ✅ CRITICAL FIX: Use single query instead of O(n²) filtering for gender breakdown
+    const genderQuery = await query(
+      `SELECT
+        s.gender,
+        COUNT(DISTINCT s.id) as total_students,
+        COUNT(DISTINCT CASE
+          WHEN al.status IN ('present', 'late') THEN al.id
+          ELSE NULL
+        END) as present_count
+       FROM students s
+       LEFT JOIN attendance_logs al ON s.id = al.student_id
+         AND al.school_id = $1
+         AND al.date >= $2
+         AND al.date <= $3
+       WHERE s.school_id = $1 AND s.is_active = TRUE
+       GROUP BY s.gender`,
+      [schoolId, startDate, endDate]
+    );
 
-    const maleAttendance = (maleStudents.length * totalWorkingDays) > 0 
-      ? ((maleLogs.length / (maleStudents.length * totalWorkingDays)) * 100).toFixed(1)
+    const genderMap = new Map(genderQuery.rows.map(row => [row.gender, row]));
+    const maleData = genderMap.get('Male') || genderMap.get('male') || { total_students: 0, present_count: 0 };
+    const femaleData = genderMap.get('Female') || genderMap.get('female') || { total_students: 0, present_count: 0 };
+
+    const maleStudentsCount = parseInt(maleData.total_students);
+    const femaleStudentsCount = parseInt(femaleData.total_students);
+
+    const maleAttendance = (maleStudentsCount * totalWorkingDays) > 0
+      ? ((parseInt(maleData.present_count) / (maleStudentsCount * totalWorkingDays)) * 100).toFixed(1)
       : 0;
-    
-    const femaleAttendance = (femaleStudents.length * totalWorkingDays) > 0
-      ? ((femaleLogs.length / (femaleStudents.length * totalWorkingDays)) * 100).toFixed(1)
+
+    const femaleAttendance = (femaleStudentsCount * totalWorkingDays) > 0
+      ? ((parseInt(femaleData.present_count) / (femaleStudentsCount * totalWorkingDays)) * 100).toFixed(1)
       : 0;
 
     const report = {
@@ -320,11 +339,11 @@ const getMonthlyReport = async (req, res) => {
       // Gender-wise Breakdown
       genderBreakdown: {
         male: {
-          totalStudents: maleStudents.length,
+          totalStudents: maleStudentsCount,
           attendanceRate: parseFloat(maleAttendance)
         },
         female: {
-          totalStudents: femaleStudents.length,
+          totalStudents: femaleStudentsCount,
           attendanceRate: parseFloat(femaleAttendance)
         }
       },

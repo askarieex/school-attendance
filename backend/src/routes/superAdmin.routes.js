@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const superAdminController = require('../controllers/superAdminController');
+const systemSettingsController = require('../controllers/systemSettingsController');
+const passwordManagementController = require('../controllers/passwordManagementController');
+const auditLogsController = require('../controllers/auditLogsController');
 const { authenticate, requireSuperAdmin } = require('../middleware/auth');
 
 /**
@@ -54,6 +57,51 @@ router.post('/users', superAdminController.createUser);
 
 // DELETE /api/v1/super/users/:id
 router.delete('/users/:id', superAdminController.deleteUser);
+
+/**
+ * PASSWORD MANAGEMENT ✨ NEW
+ */
+// GET /api/v1/super/users/search?q=email
+router.get('/users/search', passwordManagementController.searchUsers);
+
+// POST /api/v1/super/users/:id/reset-password
+router.post('/users/:id/reset-password', passwordManagementController.resetPassword);
+
+// POST /api/v1/super/users/:id/generate-temp-password
+router.post('/users/:id/generate-temp-password', passwordManagementController.generateTempPassword);
+
+/**
+ * SYSTEM SETTINGS ✨ NEW
+ */
+// GET /api/v1/super/settings - Get all settings
+router.get('/settings', systemSettingsController.getSettings);
+
+// GET /api/v1/super/settings/grouped - Get settings grouped by category
+router.get('/settings/grouped', systemSettingsController.getSettingsGrouped);
+
+// PUT /api/v1/super/settings/:key - Update single setting
+router.put('/settings/:key', systemSettingsController.updateSetting);
+
+// POST /api/v1/super/settings/batch - Update multiple settings
+router.post('/settings/batch', systemSettingsController.updateSettingsBatch);
+
+// POST /api/v1/super/settings/test-whatsapp - Test WhatsApp connection
+router.post('/settings/test-whatsapp', systemSettingsController.testWhatsAppConnection);
+
+/**
+ * AUDIT LOGS ✨ NEW
+ */
+// GET /api/v1/super/audit-logs - Get audit logs with filters
+router.get('/audit-logs', auditLogsController.getAuditLogs);
+
+// GET /api/v1/super/audit-logs/stats - Get audit statistics
+router.get('/audit-logs/stats', auditLogsController.getAuditStats);
+
+// GET /api/v1/super/audit-logs/export - Export to CSV
+router.get('/audit-logs/export', auditLogsController.exportAuditLogs);
+
+// GET /api/v1/super/audit-logs/:id - Get single audit log details
+router.get('/audit-logs/:id', auditLogsController.getAuditLogDetails);
 
 /**
  * PLATFORM STATISTICS

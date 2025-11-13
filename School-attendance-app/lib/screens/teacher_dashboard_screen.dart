@@ -130,7 +130,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    // ✅ CRITICAL FIX: Use listen: false to prevent unnecessary rebuilds
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final schoolName = "Heritage School";
 
     return Scaffold(
@@ -153,7 +154,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildSimpleTopBar(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    // ✅ CRITICAL FIX: Use listen: false to prevent rebuilds
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final schoolName = authProvider.currentUser?.schoolName ?? 'School';
 
     return Container(
@@ -219,6 +221,28 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
+                // Academic Year Badge
+                if (authProvider.currentUser?.currentAcademicYear != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      authProvider.currentUser!.currentAcademicYear!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

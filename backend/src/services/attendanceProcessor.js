@@ -62,7 +62,61 @@ async function processAttendance(log, device) {
       studentRfid = mapping.rfid_card_id;
     }
 
-    // 2. Get school settings to determine if late
+    // ✅ SECURITY FIX: Verify student belongs to same school as device
+    // This prevents cross-tenant data leakage
+    const studentSchoolCheck = await query(
+      'SELECT school_id FROM students WHERE id = $1',
+      [studentId]
+    );
+
+    if (studentSchoolCheck.rows.length === 0) {
+      console.error(`🚨 SECURITY: Student ${studentId} not found during school verification`);
+      return { success: false, error: 'Student not found' };
+    }
+
+    const studentSchoolId = studentSchoolCheck.rows[0].school_id;
+
+    if (studentSchoolId !== device.school_id) {
+      console.error(`🚨 SECURITY VIOLATION: Cross-tenant attendance attempt detected!`);
+      console.error(`   Device: ${device.device_name} (SN: ${device.serial_number})`);
+      console.error(`   Device School ID: ${device.school_id}`);
+      console.error(`   Student: ${studentName} (ID: ${studentId})`);
+      console.error(`   Student School ID: ${studentSchoolId}`);
+      console.error(`   This indicates a serious data integrity issue in device_user_mappings!`);
+      
+      // Log to security audit table (if exists)
+      try {
+        await query(
+          `INSERT INTO security_logs (event_type, severity, description, device_id, student_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [
+            'cross_tenant_violation',
+            'critical',
+            `Device from school ${device.school_id} attempted to mark attendance for student from school ${studentSchoolId}`,
+            device.id,
+            studentId
+          ]
+        );
+      } catch (logError) {
+        console.error('Failed to log security event:', logError.message);
+      }
+
+      return { 
+        success: false, 
+        error: 'Cross-tenant violation: Student and device belong to different schools' 
+      };
+    }
+
+    console.log(`✅ Security check passed: Student ${studentName} belongs to same school as device`);
+
+    // 2. Get school name for notifications
+    const schoolResult = await query(
+      'SELECT name FROM schools WHERE id = $1',
+      [device.school_id]
+    );
+    const schoolName = schoolResult.rows[0]?.name || 'School';
+
+    // 3. Get school settings to determine if late
     const settingsResult = await query(
       'SELECT * FROM school_settings WHERE school_id = $1',
       [device.school_id]
@@ -120,6 +174,81 @@ async function processAttendance(log, device) {
     const wasInserted = insertResult.rows[0].inserted;
     const action = wasInserted ? 'recorded' : 'updated (duplicate - keeping earliest time)';
     console.log(`✅ Attendance ${action}: ${studentName} - ${attendanceStatus} at ${timestamp}`);
+
+    // 📱 SEND WHATSAPP/SMS NOTIFICATION TO PARENT
+    // Only send for new attendance records (not duplicates) and for late/absent/leave status
+    if (wasInserted && (attendanceStatus === 'late' || attendanceStatus === 'absent' || attendanceStatus === 'leave')) {
+      try {
+        // Get student phone numbers
+        const studentPhoneResult = await query(
+          'SELECT guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
+          [studentId]
+        );
+
+        if (studentPhoneResult.rows.length > 0) {
+          const phoneData = studentPhoneResult.rows[0];
+
+          // Try multiple phone fields in order of priority
+          let phoneToUse = null;
+          if (phoneData.guardian_phone && phoneData.guardian_phone.trim() !== '') {
+            phoneToUse = phoneData.guardian_phone;
+          } else if (phoneData.parent_phone && phoneData.parent_phone.trim() !== '') {
+            phoneToUse = phoneData.parent_phone;
+          } else if (phoneData.mother_phone && phoneData.mother_phone.trim() !== '') {
+            phoneToUse = phoneData.mother_phone;
+          }
+
+          if (phoneToUse) {
+            // ✅ SECURITY FIX (Bug #7): Mask phone number in logs
+            const { maskPhone } = require('../utils/logger');
+            console.log(`📱 [RFID] Sending notification to ${maskPhone(phoneToUse)} for ${studentName} (${attendanceStatus})`);
+
+            // Import WhatsApp service
+            const whatsappService = require('./whatsappService');
+
+            // Format check-in time (extract HH:MM:SS from timestamp)
+            const timeFormatted = timestamp.split(' ')[1] || timestamp;
+
+            // Send alert (async, non-blocking)
+            setImmediate(async () => {
+              try {
+                const result = await whatsappService.sendAttendanceAlert({
+                  parentPhone: phoneToUse,
+                  studentName: studentName,
+                  studentId: studentId,
+                  schoolId: device.school_id,
+                  status: attendanceStatus,
+                  checkInTime: timeFormatted,
+                  schoolName: schoolName,
+                  date: attendanceDate
+                });
+
+                if (result.success) {
+                  if (result.skipped) {
+                    console.log(`⏭️  [RFID] Notification skipped: ${result.reason}`);
+                  } else {
+                    console.log(`✅ [RFID] Notification sent successfully via ${result.sentVia}: ${result.messageId}`);
+                  }
+                } else {
+                  console.error(`❌ [RFID] Notification failed: ${result.error}`);
+                }
+              } catch (notifError) {
+                console.error('[RFID] Notification error (non-fatal):', notifError.message);
+              }
+            });
+          } else {
+            console.log(`⚠️  [RFID] No phone number found for ${studentName}, skipping notification`);
+          }
+        }
+      } catch (phoneError) {
+        console.error('[RFID] Phone lookup error (non-fatal):', phoneError.message);
+        // Don't fail attendance processing if notification fails
+      }
+    } else if (wasInserted && attendanceStatus === 'present') {
+      console.log(`ℹ️  [RFID] Student ${studentName} marked as present, no notification needed`);
+    } else if (!wasInserted) {
+      console.log(`ℹ️  [RFID] Duplicate scan for ${studentName}, notification already sent`);
+    }
 
     return {
       success: true,

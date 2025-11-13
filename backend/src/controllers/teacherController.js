@@ -139,7 +139,6 @@ const deleteTeacher = async (req, res) => {
 const getTeacherAssignments = async (req, res) => {
   try {
     const { id } = req.params;
-    const { academicYear = '2025-2026' } = req.query;
 
     // Verify teacher exists and belongs to this school
     const teacher = await Teacher.findById(id);
@@ -149,6 +148,18 @@ const getTeacherAssignments = async (req, res) => {
 
     if (teacher.school_id !== req.tenantSchoolId) {
       return sendError(res, 'Access denied', 403);
+    }
+
+    // ✅ FIXED: Get current academic year dynamically instead of hardcoded
+    let academicYear = req.query.academicYear;
+
+    if (!academicYear) {
+      const { getCurrentAcademicYear } = require('../utils/academicYear');
+      academicYear = await getCurrentAcademicYear(teacher.school_id);
+    }
+
+    if (!academicYear) {
+      return sendError(res, 'No active academic year found. Please set current academic year in settings.', 400);
     }
 
     const assignments = await Teacher.getAssignments(id, academicYear);

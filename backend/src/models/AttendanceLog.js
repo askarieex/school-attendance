@@ -43,7 +43,7 @@ class AttendanceLog {
   /**
    * Get today's attendance stats for a school
    */
-  static async getTodayStats(schoolId) {
+  static async getTodayStats(schoolId, academicYear = null) {
     const today = new Date().toISOString().split('T')[0];
 
     // Get attendance breakdown
@@ -57,11 +57,16 @@ class AttendanceLog {
       [schoolId, today]
     );
 
-    // Get total students
-    const totalResult = await query(
-      'SELECT COUNT(*) FROM students WHERE school_id = $1 AND is_active = TRUE',
-      [schoolId]
-    );
+    // Get total students (filter by current academic year if provided)
+    let totalQuery = 'SELECT COUNT(*) FROM students WHERE school_id = $1 AND is_active = TRUE';
+    const totalParams = [schoolId];
+
+    if (academicYear) {
+      totalQuery += ' AND academic_year = $2';
+      totalParams.push(academicYear);
+    }
+
+    const totalResult = await query(totalQuery, totalParams);
 
     const total = parseInt(totalResult.rows[0].count);
     const stats = {
@@ -229,19 +234,27 @@ class AttendanceLog {
   /**
    * Get absent students for a specific date
    */
-  static async getAbsentStudents(schoolId, date) {
+  static async getAbsentStudents(schoolId, date, academicYear = null) {
+    let whereClause = 'WHERE s.school_id = $1 AND s.is_active = TRUE';
+    const params = [schoolId, date];
+
+    // Filter by academic year if provided
+    if (academicYear) {
+      whereClause += ' AND s.academic_year = $3';
+      params.push(academicYear);
+    }
+
     const result = await query(
       `SELECT s.*
        FROM students s
-       WHERE s.school_id = $1
-       AND s.is_active = TRUE
+       ${whereClause}
        AND NOT EXISTS (
          SELECT 1 FROM attendance_logs al
          WHERE al.student_id = s.id
          AND al.date = $2
        )
        ORDER BY s.full_name`,
-      [schoolId, date]
+      params
     );
 
     return result.rows;

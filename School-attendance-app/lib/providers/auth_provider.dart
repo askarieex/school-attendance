@@ -63,6 +63,7 @@ class AuthProvider with ChangeNotifier {
           name: user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],  // ✅ FIX: Use snake_case from API
+          currentAcademicYear: user['currentAcademicYear'],  // ✅ NEW: Academic year
         );
         
         print('✅ Login successful: ${_currentUser?.name}');
@@ -121,6 +122,7 @@ class AuthProvider with ChangeNotifier {
           name: user['full_name'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],
+          currentAcademicYear: user['currentAcademicYear'],  // ✅ NEW: Academic year
         );
         
         notifyListeners();
@@ -133,5 +135,12 @@ class AuthProvider with ChangeNotifier {
       await logout();
       return false;
     }
+  }
+  
+  // ✅ CRITICAL FIX: Dispose API service to prevent memory leaks
+  @override
+  void dispose() {
+    _apiService.dispose();
+    super.dispose();
   }
 }

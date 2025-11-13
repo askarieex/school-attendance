@@ -90,6 +90,42 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     
     setState(() => _isLoading = true);
     
+    // ✅ CRITICAL FIX: Show loading dialog to prevent frozen UI
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return WillPopScope(
+            onWillPop: () async => false,
+            child: Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text(
+                        'Loading attendance data...',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'This may take a few moments',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+    
     try {
       // 1. Fetch students
       final studentsResponse = await widget.apiService.get(
@@ -111,8 +147,14 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       
       Map<int, Map<int, String>> attendanceMap = {};
       
+      // ✅ CRITICAL FIX: Add null safety
       for (var student in students) {
-        attendanceMap[student['id']] = {};
+        final studentId = student['id'];
+        if (studentId != null) {
+          attendanceMap[studentId] = {};
+        } else {
+          print('⚠️ Warning: Student with null ID found, skipping');
+        }
       }
       
       // Fetch attendance logs for the month from API
@@ -146,20 +188,29 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
             // Map logs to students
             for (var log in logs) {
+              // ✅ CRITICAL FIX: Add null safety to prevent crashes
               final studentId = log['student_id'];
-              final status = log['status'] ?? 'present';
+              final status = log['status'];
+              
+              if (studentId == null) {
+                print('⚠️ Warning: Log with null student_id found, skipping');
+                continue;
+              }
+              
+              if (!attendanceMap.containsKey(studentId)) {
+                print('⚠️ Warning: Unknown student ID $studentId in log, skipping');
+                continue;
+              }
 
-              if (attendanceMap.containsKey(studentId)) {
-                // Map status to our format
-                if (status == 'present') {
-                  attendanceMap[studentId]![day] = 'P';
-                } else if (status == 'late') {
-                  attendanceMap[studentId]![day] = 'L';
-                } else if (status == 'absent') {
-                  attendanceMap[studentId]![day] = 'A';
-                } else if (status == 'leave') {
-                  attendanceMap[studentId]![day] = 'LV';
-                }
+              // Map status to our format
+              if (status == 'present') {
+                attendanceMap[studentId]![day] = 'P';
+              } else if (status == 'late') {
+                attendanceMap[studentId]![day] = 'L';
+              } else if (status == 'absent') {
+                attendanceMap[studentId]![day] = 'A';
+              } else if (status == 'leave') {
+                attendanceMap[studentId]![day] = 'LV';
               }
             }
           }
@@ -214,6 +265,24 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     } catch (e) {
       print('❌ Error loading attendance: $e');
       setState(() => _isLoading = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading attendance: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      // ✅ CRITICAL FIX: Close loading dialog
+      if (mounted) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (e) {
+          // Dialog might already be closed
+        }
+      }
     }
   }
   

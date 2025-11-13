@@ -92,6 +92,10 @@ class Teacher {
 
     const total = parseInt(countResult.rows[0].count);
 
+    // ✅ FIXED: Get current academic year dynamically instead of hardcoded '2025-2026'
+    const { getCurrentAcademicYear } = require('../utils/academicYear');
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
     // Get paginated results
     params.push(limit, offset);
     const result = await query(
@@ -119,14 +123,14 @@ class Teacher {
           FROM teacher_class_assignments tca
           JOIN sections s ON tca.section_id = s.id
           JOIN classes c ON s.class_id = c.id
-          WHERE tca.teacher_id = t.id AND tca.academic_year = '2025-2026'
+          WHERE tca.teacher_id = t.id AND tca.academic_year = $${paramCount + 3}
         ) as assignments
       FROM teachers t
       JOIN users u ON t.user_id = u.id
       ${whereClause}
       ORDER BY t.created_at DESC
       LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
-      params
+      [...params, currentAcademicYear]
     );
 
     return {
@@ -317,6 +321,27 @@ class Teacher {
       }
     }
 
+    // ✅ FIXED: Get current academic year dynamically if not provided
+    let finalAcademicYear = academicYear;
+    if (!finalAcademicYear) {
+      // Get school_id from teacher to fetch current academic year
+      const teacherSchoolResult = await query(
+        'SELECT school_id FROM teachers WHERE id = $1',
+        [teacherId]
+      );
+
+      if (teacherSchoolResult.rows.length > 0) {
+        const { getCurrentAcademicYear } = require('../utils/academicYear');
+        finalAcademicYear = await getCurrentAcademicYear(teacherSchoolResult.rows[0].school_id);
+      }
+
+      // Fallback to calculating from current date if no academic year set
+      if (!finalAcademicYear) {
+        const { calculateAcademicYearFromDate } = require('../utils/academicYear');
+        finalAcademicYear = calculateAcademicYearFromDate();
+      }
+    }
+
     const result = await query(
       `INSERT INTO teacher_class_assignments (
         teacher_id, section_id, subject, is_form_teacher, academic_year
@@ -326,7 +351,7 @@ class Teacher {
         is_form_teacher = EXCLUDED.is_form_teacher,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *`,
-      [teacherId, sectionId, subject, isFormTeacher || false, academicYear || '2025-2026']
+      [teacherId, sectionId, subject, isFormTeacher || false, finalAcademicYear]
     );
 
     // If form teacher, update sections table with user_id (not teacher_id)
@@ -385,8 +410,15 @@ class Teacher {
 
   /**
    * Get teacher's assigned sections
+   * ✅ FIXED: Removed hardcoded default value, caller should provide academic year
    */
-  static async getAssignments(teacherId, academicYear = '2025-2026') {
+  static async getAssignments(teacherId, academicYear) {
+    // If no academic year provided, return empty array (caller should provide it)
+    if (!academicYear) {
+      console.warn(`⚠️ getAssignments called without academic year for teacher ${teacherId}`);
+      return [];
+    }
+
     const result = await query(
       `SELECT
         tca.*,

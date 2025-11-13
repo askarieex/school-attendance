@@ -7,12 +7,15 @@ const {
   validateTeacherSectionAccess,
   validateTeacherStudentAccess
 } = require('../middleware/teacherAuth');
+const { body, validationResult } = require('express-validator'); // ✅ SECURITY FIX: Add validation
 const Student = require('../models/Student');
 const Teacher = require('../models/Teacher');
 const { query } = require('../config/database');
 const { sendSuccess, sendError } = require('../utils/response');
 const { getCurrentDateIST } = require('../utils/timezone');
 const whatsappService = require('../services/whatsappService');
+const { getCurrentAcademicYear } = require('../utils/academicYear');
+const { maskPhone } = require('../utils/logger');
 
 /**
  * Teacher-specific Routes
@@ -92,8 +95,18 @@ router.get('/my-sections', async (req, res) => {
 
     const teacherId = teacherResult.rows[0].id;
 
-    // Get teacher assignments
-    const assignments = await Teacher.getAssignments(teacherId, '2025-2026');
+    // Get current academic year dynamically
+    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
+    if (!currentAcademicYear) {
+      console.warn(`⚠️ No current academic year set for school ${schoolId}`);
+      return sendError(res, 'No active academic year found. Please contact school administration.', 400);
+    }
+
+    console.log(`📅 Using academic year: ${currentAcademicYear} for school ${schoolId}`);
+
+    // Get teacher assignments for current academic year
+    const assignments = await Teacher.getAssignments(teacherId, currentAcademicYear);
 
     sendSuccess(res, assignments, 'Sections retrieved successfully');
   } catch (error) {
@@ -106,33 +119,63 @@ router.get('/my-sections', async (req, res) => {
  * POST /api/v1/teacher/sections/:sectionId/attendance
  * Mark attendance for a student (teacher can mark their assigned students)
  * 🔒 Protected: validateTeacherSectionAccess middleware
+ * ✅ SECURITY FIX: Added input validation
  */
 router.post(
   '/sections/:sectionId/attendance',
   validateTeacherSectionAccess('params', 'sectionId'),
+  [
+    // ✅ SECURITY FIX: Validate all inputs
+    body('studentId')
+      .notEmpty().withMessage('Student ID is required')
+      .isInt({ min: 1 }).withMessage('Student ID must be a positive integer'),
+    
+    body('date')
+      .notEmpty().withMessage('Date is required')
+      .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Date must be in YYYY-MM-DD format')
+      .custom((value) => {
+        const date = new Date(value);
+        const today = new Date();
+        if (date > today) {
+          throw new Error('Cannot mark attendance for future dates');
+        }
+        return true;
+      }),
+    
+    body('status')
+      .notEmpty().withMessage('Status is required')
+      .isIn(['present', 'absent', 'late', 'leave']).withMessage('Status must be: present, absent, late, or leave'),
+    
+    body('checkInTime')
+      .optional()
+      .matches(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/).withMessage('Check-in time must be in HH:MM:SS format'),
+    
+    body('notes')
+      .optional()
+      .trim()
+      .isLength({ max: 500 }).withMessage('Notes cannot exceed 500 characters')
+  ],
   async (req, res) => {
     try {
+      // ✅ SECURITY FIX: Check validation results
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, errors.array()[0].msg, 400);
+      }
+
       const { sectionId } = req.params;
       const { studentId, date, status, notes, checkInTime } = req.body;
       const userId = req.user.id;
       const schoolId = req.tenantSchoolId;
 
       // Authorization already validated by middleware
+      // Input validation already done by express-validator above
 
-      if (!studentId || !date || !status) {
-        return sendError(res, 'studentId, date, and status are required', 400);
-      }
-
-    // ✅ SECURITY FIX: Validate date is not in future
+    // ✅ BUSINESS LOGIC: Validate date is not Sunday
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const attendanceDate = new Date(date);
     attendanceDate.setHours(0, 0, 0, 0);
-
-    if (attendanceDate > today) {
-      console.log(`❌ Rejected future date: ${date} (today is ${today.toISOString().split('T')[0]})`);
-      return sendError(res, 'Cannot mark attendance for future dates', 400);
-    }
 
     // ✅ BUSINESS LOGIC FIX: Validate date is not Sunday
     const dayOfWeek = attendanceDate.getDay();
@@ -262,7 +305,7 @@ router.post(
             const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
             const schoolName = schoolResult.rows[0]?.name || 'School';
 
-            console.log(`📱 [TEACHER] Sending WhatsApp alert to ${phoneToUse} for ${studentData.full_name} (${finalStatus})`);
+            console.log(`📱 [TEACHER] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${studentData.full_name} (${finalStatus})`);
 
             const whatsappResult = await whatsappService.sendAttendanceAlert({
               parentPhone: phoneToUse,
@@ -308,8 +351,12 @@ router.post(
  * GET /api/v1/teacher/sections/:sectionId/attendance
  * Get attendance logs for a specific date and section
  * Query params: date (YYYY-MM-DD)
+ * 🔒 SECURITY FIX: Added validateTeacherSectionAccess middleware
  */
-router.get('/sections/:sectionId/attendance', async (req, res) => {
+router.get(
+  '/sections/:sectionId/attendance',
+  validateTeacherSectionAccess('params', 'sectionId'),
+  async (req, res) => {
   try {
     const { sectionId } = req.params;
     const { date } = req.query;
@@ -574,8 +621,12 @@ router.get('/dashboard/stats', async (req, res) => {
  * GET /api/v1/teacher/sections/:sectionId/attendance/range
  * Get attendance logs for date range (BATCH API for teacher calendar)
  * Query params: startDate, endDate (YYYY-MM-DD)
+ * 🔒 SECURITY FIX: Added validateTeacherSectionAccess middleware
  */
-router.get('/sections/:sectionId/attendance/range', async (req, res) => {
+router.get(
+  '/sections/:sectionId/attendance/range',
+  validateTeacherSectionAccess('params', 'sectionId'),
+  async (req, res) => {
   try {
     const { sectionId } = req.params;
     const { startDate, endDate } = req.query;

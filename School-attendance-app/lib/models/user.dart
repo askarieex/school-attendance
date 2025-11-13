@@ -6,6 +6,7 @@ class User {
   final String name;
   final UserRole role;
   final String? schoolName;
+  final String? currentAcademicYear;
 
   User({
     required this.id,
@@ -13,5 +14,6 @@ class User {
     required this.name,
     required this.role,
     this.schoolName,
+    this.currentAcademicYear,
   });
 }

@@ -5,6 +5,7 @@ const { sendSuccess, sendError } = require('../utils/response');
 const { query } = require('../config/database');
 const { getCurrentDateIST } = require('../utils/timezone');
 const whatsappService = require('../services/whatsappService');
+const { maskPhone } = require('../utils/logger');
 
 /**
  * Log attendance when student scans RFID card
@@ -108,7 +109,7 @@ const logAttendance = async (req, res) => {
           const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
           const schoolName = schoolResult.rows[0]?.name || 'School';
 
-          console.log(`📱 [RFID] Sending WhatsApp alert to ${phoneToUse} for ${student.full_name} (${status})`);
+          console.log(`📱 [RFID] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${student.full_name} (${status})`);
 
           const checkInTimeFormatted = checkInTime.toTimeString().split(' ')[0]; // HH:MM:SS
 

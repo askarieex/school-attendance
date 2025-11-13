@@ -37,27 +37,31 @@ class DeviceCommand {
    * @param {number} devicePin - Student's PIN on this device
    * @param {string} studentName - Student's full name
    * @param {string} rfidCard - RFID card number
+   * @param {object} client - Optional database client for transactions
    */
-  static async queueAddUser(deviceId, devicePin, studentName, rfidCard) {
+  static async queueAddUser(deviceId, devicePin, studentName, rfidCard, client = null) {
+    // Use transaction client if provided, otherwise use global query
+    const queryFn = client ? client.query.bind(client) : query;
+
     // First insert to get the DB-generated ID
-    const result = await query(
+    const result = await queryFn(
       `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
        VALUES ($1, $2, $3, $4, 'pending')
        RETURNING id`,
       [deviceId, 'add_user', 'PLACEHOLDER', 10]
     );
-    
+
     const commandId = result.rows[0].id;
-    
+
     // Now generate the command string with the correct ID
     const commandString = CommandGenerator.addUser(devicePin, studentName, rfidCard, commandId);
-    
+
     // Update the command string
-    await query(
+    await queryFn(
       'UPDATE device_commands SET command_string = $1 WHERE id = $2',
       [commandString, commandId]
     );
-    
+
     console.log(`📋 Command queued: add_user (id=${commandId}) for device ${deviceId}`);
     return result.rows[0];
   }
@@ -66,27 +70,31 @@ class DeviceCommand {
    * Queue "Delete User" command
    * @param {number} deviceId - Device ID
    * @param {number} devicePin - Student's PIN on this device
+   * @param {object} client - Optional database client for transactions
    */
-  static async queueDeleteUser(deviceId, devicePin) {
+  static async queueDeleteUser(deviceId, devicePin, client = null) {
+    // Use transaction client if provided, otherwise use global query
+    const queryFn = client ? client.query.bind(client) : query;
+
     // First insert to get the DB-generated ID
-    const result = await query(
+    const result = await queryFn(
       `INSERT INTO device_commands (device_id, command_type, command_string, priority, status)
        VALUES ($1, $2, $3, $4, 'pending')
        RETURNING id`,
       [deviceId, 'delete_user', 'PLACEHOLDER', 5]
     );
-    
+
     const commandId = result.rows[0].id;
-    
+
     // Now generate the command string with the correct ID
     const commandString = CommandGenerator.deleteUser(devicePin, commandId);
-    
+
     // Update the command string
-    await query(
+    await queryFn(
       'UPDATE device_commands SET command_string = $1 WHERE id = $2',
       [commandString, commandId]
     );
-    
+
     console.log(`📋 Command queued: delete_user (id=${commandId}) for device ${deviceId}`);
     return result.rows[0];
   }
