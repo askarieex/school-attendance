@@ -1,201 +1,231 @@
-# Login Credentials & URLs
+# 🔐 LOGIN CREDENTIALS - QUICK REFERENCE
 
-## ✅ ALL ISSUES FIXED!
-
-### Problems Found & Fixed:
-1. **CORS Issue** - Backend was only allowing ports 3000 and 3001
-   - **Fixed**: Updated `.env` to allow ports 3002, 3003, 3004
-
-2. **Password Issue** - Password was incorrect in database
-   - **Fixed**: Updated password to `password123`
-
-3. **Backend Restart** - CORS changes required server restart
-   - **Fixed**: Backend restarted with new configuration
+**Last Updated**: November 5, 2025  
+**All Passwords Reset To**: `password123`
 
 ---
 
-## 🌐 Application URLs
+## 📱 FLUTTER APP LOGINS (Teacher)
 
-| Application | URL | Status |
-|------------|-----|--------|
-| **Backend API** | http://localhost:3001 | ✅ Running |
-| **Super Admin Panel** | http://localhost:3000 | Running |
-| **School Dashboard** | http://localhost:3003 | ✅ Running |
-| **School Dashboard** | http://localhost:3004 | ✅ Running |
-
----
-
-## 🔑 Login Credentials
-
-### School Admin Dashboard
-Use these credentials to login:
-
+### **Working Teacher Account**:
 ```
-Email: askarieex@gmail.com
+Email: askery7865@gmail.com
 Password: password123
+Role: Teacher
+School: CPS (ID: 6)
+Academic Year: 2025-2026
+Classes: 3 (9th-A, 10th-Red x2)
+Students: 6
 ```
 
-**Role**: `school_admin`
-**School ID**: 1
-
----
-
-## 📝 How to Login
-
-1. Open your browser and go to: **http://localhost:3003/login** or **http://localhost:3004/login**
-
-2. Enter credentials:
-   - Email: `askarieex@gmail.com`
-   - Password: `password123`
-
-3. Click "Sign In"
-
-4. You will be redirected to the Dashboard
-
----
-
-## 🎯 What You Can Do After Login
-
-### Dashboard Page
-- View total students count
-- See present/absent/late statistics for today
-- Quick action buttons
-
-### Students Page
-- View all students in your school
-- Search students by name or RFID UID
-- Add new student
-- Edit existing student
-- Delete student
-
-### Attendance Page
-- View all attendance logs
-- Search by student name or RFID
-- Filter by date
-- Filter by status (Present/Late/Absent)
-- Export attendance to CSV
-
-### Navigation
-- Use the left sidebar to navigate between pages
-- Click your profile in top-right to see user info
-- Click "Logout" button to logout
-
----
-
-## 🔧 Technical Details
-
-### Backend Configuration Updated
-
-**File**: `backend/.env`
-```env
-# Old CORS config (didn't work):
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
-
-# New CORS config (works!):
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004
+### **Other Teacher Accounts**:
+```
+Email: hell222o@gmail.com
+Password: password123
+Role: Teacher  
+School: PIL (ID: 1)
+Academic Year: 2025-2026
+Classes: 1 (8Th-Green)
+Students: 7
 ```
 
-### Database User Updated
+---
 
+## 🌐 WEB DASHBOARD LOGINS
+
+### **Admin Account** (Full Access):
+```
+Email: admin@adtrack.com
+Password: admin123
+Role: Super Admin
+Access: All schools
+```
+
+### **School Admin**:
+```
+Email: [School specific admin email]
+Password: password123
+Role: School Admin
+Access: Single school management
+```
+
+---
+
+## 🔧 HOW TO RESET PASSWORD
+
+### **Method 1: Using psql**
 ```sql
-User ID: 2
-Email: askarieex@gmail.com
-Full Name: Askarieex
-Role: school_admin
-School ID: 1
-Password: password123 (hashed with bcrypt)
+-- Update password to 'password123'
+UPDATE users 
+SET password_hash = '$2a$10$YOUR_HASH_HERE'
+WHERE email = 'user@example.com';
+```
+
+### **Method 2: Using Node.js Script**
+```bash
+cd backend
+node -e "
+const bcrypt = require('bcryptjs');
+(async () => {
+  const hash = await bcrypt.hash('password123', 10);
+  const { query } = require('./src/config/database');
+  await query('UPDATE users SET password_hash = \$1 WHERE email = \$2', 
+    [hash, 'user@example.com']);
+  console.log('✅ Password updated');
+  process.exit(0);
+})();
+"
+```
+
+### **Method 3: Using API** (if forgot password feature exists)
+```bash
+curl -X POST http://localhost:3001/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com"}'
 ```
 
 ---
 
-## ✅ Test Results
+## ✅ VERIFICATION
 
-### CORS Test
+### **Test Login**:
 ```bash
+# Test via API
 curl -X POST http://localhost:3001/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -H "Origin: http://localhost:3004" \
-  -d '{"email":"askarieex@gmail.com","password":"password123"}'
+  -d '{"email":"askery7865@gmail.com","password":"password123"}'
 
-Response:
-✅ Access-Control-Allow-Origin: http://localhost:3004
-✅ success: true
-✅ User data returned with JWT tokens
+# Expected response:
+# {"success": true, "data": {"user": {...}, "accessToken": "..."}}
 ```
 
-### Login Test
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "data": {
-    "user": {
-      "id": 2,
-      "email": "askarieex@gmail.com",
-      "role": "school_admin",
-      "schoolId": 1,
-      "fullName": "Askarieex"
-    },
-    "accessToken": "eyJhbGci...",
-    "refreshToken": "eyJhbGci..."
-  }
-}
+### **Flutter App**:
+1. Open app
+2. Select "Teacher Login"
+3. Enter email and password
+4. Tap "Login"
+5. Should see dashboard with classes
+
+---
+
+## 🐛 TROUBLESHOOTING
+
+### **Login Fails**:
+1. Check email spelling (case-sensitive)
+2. Verify user exists in database
+3. Reset password using script above
+4. Check backend server is running
+5. Verify network connection
+
+### **"Invalid email or password"**:
+```sql
+-- Check if user exists
+SELECT id, email, role FROM users WHERE email = 'user@example.com';
+
+-- Reset password
+-- Use Node.js script above
+```
+
+### **Backend Not Running**:
+```bash
+cd backend
+npm start
+# Should see: "Server running on port 3001"
 ```
 
 ---
 
-## 🚀 Everything is Working Now!
+## 📊 USER DATABASE QUERY
 
-You can now:
-1. ✅ Login to the School Dashboard
-2. ✅ View dashboard statistics
-3. ✅ Manage students (add, edit, delete)
-4. ✅ View attendance logs
-5. ✅ Filter and search data
-6. ✅ Export reports
+### **List All Users**:
+```sql
+SELECT 
+  id, 
+  email, 
+  role, 
+  full_name, 
+  school_id,
+  is_active,
+  created_at
+FROM users
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+### **Find Teacher Users**:
+```sql
+SELECT 
+  u.id,
+  u.email,
+  u.full_name,
+  u.school_id,
+  s.name as school_name,
+  t.id as teacher_id
+FROM users u
+LEFT JOIN schools s ON u.school_id = s.id
+LEFT JOIN teachers t ON u.id = t.user_id
+WHERE u.role = 'teacher'
+ORDER BY u.id;
+```
+
+### **Check Teacher Assignments**:
+```sql
+SELECT 
+  u.email,
+  u.full_name,
+  t.id as teacher_id,
+  tca.section_id,
+  c.class_name,
+  s.section_name,
+  tca.academic_year
+FROM users u
+JOIN teachers t ON u.id = t.user_id
+LEFT JOIN teacher_class_assignments tca ON t.id = tca.teacher_id
+LEFT JOIN sections s ON tca.section_id = s.id
+LEFT JOIN classes c ON s.class_id = c.id
+WHERE u.email = 'askery7865@gmail.com';
+```
 
 ---
 
-## 📞 Next Steps
+## 🎯 QUICK COMMANDS
 
-### If You Still Have Issues:
+### **Reset All Teacher Passwords**:
+```bash
+# Run this to reset ALL teacher passwords to 'password123'
+cd backend
+node scripts/reset-teacher-passwords.js
+```
 
-1. **Clear Browser Cache**
-   - Press `Cmd + Shift + R` (Mac) or `Ctrl + Shift + R` (Windows)
-   - Or use Incognito/Private mode
+### **Create Script** (save as reset-teacher-passwords.js):
+```javascript
+const bcrypt = require('bcryptjs');
+const { query } = require('./src/config/database');
 
-2. **Check Backend is Running**
-   ```bash
-   curl http://localhost:3001
-   # Should return: "School Attendance API is running"
-   ```
-
-3. **Check School Dashboard is Running**
-   ```bash
-   lsof -i :3003
-   # Should show node process
-   ```
-
-4. **View Browser Console**
-   - Open Developer Tools (F12)
-   - Check Console tab for any errors
-   - Check Network tab to see API requests
-
----
-
-## 🎉 Summary
-
-**Status**: ✅ **ALL WORKING**
-
-- Backend API: ✅ Running on port 3001
-- CORS: ✅ Fixed to allow dashboard ports
-- School Dashboard: ✅ Running on port 3003/3004
-- Login: ✅ Working with email/password
-- Database: ✅ User credentials updated
-
-**You can now login and use the School Dashboard!**
+(async () => {
+  const hash = await bcrypt.hash('password123', 10);
+  const result = await query(
+    "UPDATE users SET password_hash = $1 WHERE role = 'teacher' RETURNING email",
+    [hash]
+  );
+  console.log(`✅ Updated ${result.rows.length} teachers`);
+  result.rows.forEach(r => console.log(`  - ${r.email}`));
+  process.exit(0);
+})();
+```
 
 ---
 
-Created: October 12, 2025
-Last Updated: October 12, 2025 - 2:38 PM
+## ⚠️ SECURITY NOTES
+
+1. **Change default passwords** in production
+2. **Use strong passwords** (min 8 chars, mixed case, numbers, symbols)
+3. **Never commit passwords** to git
+4. **Use environment variables** for sensitive data
+5. **Enable 2FA** for production (future feature)
+
+---
+
+**Created**: November 5, 2025  
+**Purpose**: Quick reference for login credentials  
+**Status**: ✅ All passwords reset and working
