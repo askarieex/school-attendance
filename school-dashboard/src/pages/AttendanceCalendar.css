@@ -1,0 +1,522 @@
+/* ===================================
+   CALENDAR-STYLE ATTENDANCE VIEW
+   Beautiful, Clean, Professional Design
+   =================================== */
+
+.attendance-calendar-container {
+  padding: 32px;
+  background: #e8eef3;
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ===================================
+   HEADER SECTION
+   =================================== */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-icon-cal {
+  width: 48px;
+  height: 48px;
+  background: #3ba0d6;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+}
+
+.calendar-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+}
+
+.calendar-subtitle {
+  font-size: 14px;
+  color: #718096;
+  margin: 4px 0 0 0;
+}
+
+.header-right {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-download {
+  padding: 12px 24px;
+  background: white;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn-download:hover {
+  background: #f7fafc;
+  border-color: #a0aec0;
+}
+
+/* ===================================
+   CONTROLS BAR
+   =================================== */
+.controls-bar {
+  background: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.month-navigation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #4a5568;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  background: #f7fafc;
+  border-color: #cbd5e0;
+}
+
+.month-display {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+  min-width: 200px;
+  text-align: center;
+}
+
+.filter-dropdown-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f7fafc;
+  padding: 8px 16px;
+  border-radius: 8px;
+}
+
+.filter-icon-cal {
+  color: #a0aec0;
+  font-size: 16px;
+}
+
+.class-filter-select {
+  padding: 6px 32px 6px 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ===================================
+   SUMMARY STATS
+   =================================== */
+.summary-stats {
+  background: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.stat-item {
+  font-size: 14px;
+  color: #718096;
+}
+
+.stat-label {
+  font-weight: 500;
+}
+
+/* ===================================
+   CALENDAR TABLE
+   =================================== */
+.calendar-table-wrapper {
+  background: white;
+  border-radius: 12px;
+  overflow: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  max-height: 600px;
+}
+
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.calendar-table thead {
+  background: #f7fafc;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.calendar-table thead th {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #718096;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 5;
+  border-right: 2px solid #e2e8f0;
+}
+
+.calendar-table thead .sticky-col {
+  background: #f7fafc;
+  z-index: 15;
+}
+
+.header-cell {
+  text-align: left !important;
+  min-width: 180px;
+  max-width: 180px;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats-col {
+  min-width: 45px;
+  max-width: 45px;
+  background: #fafbfc;
+}
+
+.day-col {
+  min-width: 50px;
+  max-width: 50px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+/* Table Body */
+.calendar-table tbody tr {
+  border-bottom: 1px solid #f0f0f0;
+  transition: all 0.15s ease;
+}
+
+.calendar-table tbody tr:hover {
+  background: #f7fafc;
+}
+
+.calendar-table tbody td {
+  padding: 12px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.student-row .sticky-col {
+  background: white;
+}
+
+.calendar-table tbody tr:hover .sticky-col {
+  background: #f7fafc;
+}
+
+.student-name-cell {
+  text-align: left !important;
+  padding: 12px 16px !important;
+}
+
+.student-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.student-name-text {
+  font-weight: 500;
+  color: #3182ce;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.student-name-text:hover {
+  text-decoration: underline;
+}
+
+.stats-percentage {
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.day-cell {
+  font-size: 18px;
+}
+
+/* ===================================
+   STATUS ICONS
+   =================================== */
+.icon-present {
+  color: #48bb78;
+  font-size: 20px;
+}
+
+.icon-late {
+  color: #ed8936;
+  font-size: 20px;
+}
+
+.icon-absent {
+  color: #f56565;
+  font-size: 20px;
+}
+
+.icon-unknown {
+  color: #cbd5e0;
+  font-size: 20px;
+}
+
+.icon-sunday {
+  color: #805ad5;
+  font-size: 16px;
+  font-weight: 700;
+  background: #f3e8ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.icon-holiday {
+  color: #e53e3e;
+  font-size: 16px;
+  font-weight: 700;
+  background: #fed7d7;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Header Icons */
+.header-icon-check {
+  color: #48bb78;
+  font-size: 16px;
+}
+
+.header-icon-clock {
+  color: #ed8936;
+  font-size: 16px;
+}
+
+.header-icon-cross {
+  color: #f56565;
+  font-size: 16px;
+}
+
+.header-icon-unknown {
+  color: #cbd5e0;
+  font-size: 16px;
+}
+
+/* ===================================
+   LEGEND BAR
+   =================================== */
+.legend-bar {
+  background: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  margin-top: 16px;
+  display: flex;
+  gap: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.legend-icon {
+  font-size: 18px;
+}
+
+/* ===================================
+   LOADING STATE
+   =================================== */
+.loading-calendar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  background: white;
+  border-radius: 12px;
+}
+
+.spinner-cal {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3ba0d6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-calendar p {
+  margin-top: 16px;
+  color: #718096;
+  font-size: 14px;
+}
+
+/* Empty State */
+.empty-state-calendar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  background: white;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.empty-icon-cal {
+  font-size: 64px;
+  color: #cbd5e0;
+  margin-bottom: 16px;
+}
+
+.empty-state-calendar h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0 0 8px 0;
+}
+
+.empty-state-calendar p {
+  font-size: 14px;
+  color: #718096;
+  margin: 0;
+}
+
+/* ===================================
+   RESPONSIVE DESIGN
+   =================================== */
+@media (max-width: 1200px) {
+  .calendar-table-wrapper {
+    max-height: none;
+  }
+
+  .calendar-table {
+    min-width: 1200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .attendance-calendar-container {
+    padding: 16px;
+  }
+
+  .calendar-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .controls-bar {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .month-navigation {
+    width: 100%;
+  }
+
+  .month-display {
+    font-size: 16px;
+  }
+
+  .legend-bar {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .summary-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+/* ===================================
+   SCROLLBAR STYLING
+   =================================== */
+.calendar-table-wrapper::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.calendar-table-wrapper::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.calendar-table-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.calendar-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}

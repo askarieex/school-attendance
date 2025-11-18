@@ -1,0 +1,411 @@
+/* Calendar Page Styles */
+
+.calendar-container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page-subtitle {
+  color: var(--gray-600);
+  font-size: 0.95rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.year-selector {
+  min-width: 120px;
+}
+
+/* Academic Year Card */
+.academic-year-card {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+}
+
+/* Holidays Summary */
+.holidays-summary {
+  margin-bottom: 2rem;
+}
+
+/* Month Sections */
+.holidays-months {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.month-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.month-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  padding: 1.25rem 1.5rem;
+  background-color: var(--gray-50);
+  border-bottom: 2px solid var(--gray-200);
+  margin: 0;
+}
+
+/* Holidays List */
+.holidays-list {
+  padding: 0;
+}
+
+.holiday-item {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--gray-100);
+  transition: all 0.2s ease;
+}
+
+.holiday-item:last-child {
+  border-bottom: none;
+}
+
+.holiday-item:hover {
+  background-color: var(--gray-50);
+}
+
+/* Holiday Date Badge */
+.holiday-date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 70px;
+  background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+  border-radius: var(--radius-lg);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.holiday-date-badge .day {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.holiday-date-badge .month {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.25rem;
+}
+
+/* Holiday Details */
+.holiday-details {
+  flex: 1;
+}
+
+.holiday-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 0.25rem;
+}
+
+.holiday-date-full {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  margin-bottom: 0.25rem;
+}
+
+.holiday-description {
+  font-size: 0.875rem;
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+/* Holiday Actions */
+.holiday-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-300);
+  background: white;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  background-color: var(--gray-100);
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.btn-icon-danger {
+  border-color: var(--danger-300);
+  color: var(--danger-600);
+}
+
+.btn-icon-danger:hover {
+  background-color: var(--danger-50);
+  border-color: var(--danger-600);
+  color: var(--danger-700);
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--gray-500);
+}
+
+.empty-state svg {
+  color: var(--gray-400);
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  margin-bottom: 1.5rem;
+  color: var(--gray-600);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.modal-content {
+  background: white;
+  border-radius: var(--radius-xl);
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+  animation: slideIn 0.3s ease-in-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 0.5rem;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--font-sans);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .calendar-header {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .year-selector {
+    flex: 1;
+    min-width: auto;
+  }
+
+  .holidays-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .academic-year-card .flex {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .academic-year-card .flex.gap-lg {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .calendar-container {
+    padding: 1rem;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .holidays-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .holiday-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .holiday-date-badge {
+    align-self: flex-start;
+  }
+
+  .holiday-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .modal-content {
+    width: 95%;
+    max-height: 95vh;
+  }
+
+  .modal-header {
+    padding: 1.25rem;
+  }
+
+  .modal-body {
+    padding: 1.25rem;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+}
+
+/* Holiday Type Colors (for badges) */
+.holiday-item[data-type="national"] .holiday-date-badge {
+  background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+}
+
+.holiday-item[data-type="festival"] .holiday-date-badge {
+  background: linear-gradient(135deg, var(--success-600), var(--success-700));
+}
+
+.holiday-item[data-type="school_event"] .holiday-date-badge {
+  background: linear-gradient(135deg, var(--warning-600), var(--warning-700));
+}
+
+.holiday-item[data-type="vacation"] .holiday-date-badge {
+  background: linear-gradient(135deg, var(--danger-600), var(--danger-700));
+}
+
+/* Loading Animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.holidays-list.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
