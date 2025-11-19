@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-// Base API URL - Use localhost for testing
-// Production: const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://adtenz.site/api/v1';
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api/v1';
+// Base API URL - Production
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://adtenz.site/api/v1';
+// Localhost for testing: const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api/v1';
 
 // Create axios instance
 const api = axios.create({
