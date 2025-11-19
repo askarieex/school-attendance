@@ -118,6 +118,8 @@ const Students = () => {
           error = 'RFID card ID must be less than 50 characters';
         } else if (!/^[a-zA-Z0-9]+$/.test(value)) {
           error = 'RFID card ID can only contain letters and numbers';
+        } else if (/^0+/.test(value) && value !== '0') {
+          error = '⚠️ Warning: RFID card starts with zeros. Make sure this is correct from your RFID reader.';
         }
         break;
 
