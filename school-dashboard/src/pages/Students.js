@@ -116,6 +116,8 @@ const Students = () => {
           error = 'RFID card ID is required';
         } else if (value.trim().length > 50) {
           error = 'RFID card ID must be less than 50 characters';
+        } else if (!/^[a-zA-Z0-9]+$/.test(value)) {
+          error = 'RFID card ID can only contain letters and numbers';
         }
         break;
 
@@ -200,10 +202,13 @@ const Students = () => {
 
   // Handle field change with validation
   const handleFieldChange = (name, value) => {
-    // Remove leading zeros from RFID card ID
+    // For RFID card ID: Keep leading zeros, only allow alphanumeric (for hex format)
+    // RFID readers send UIDs with leading zeros preserved (e.g., 0012345678)
+    // We must keep them as-is for proper card identification
     if (name === 'rfidUid' && value) {
-      // Remove all leading zeros, but keep at least one digit if the value is all zeros
-      value = value.replace(/^0+/, '') || '0';
+      // Remove any non-alphanumeric characters (spaces, special chars)
+      // But KEEP leading zeros - they are part of the UID
+      value = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     }
 
     setFormData(prev => ({
