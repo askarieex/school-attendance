@@ -293,6 +293,48 @@ async function getDevicePins(deviceId) {
 }
 
 /**
+ * Get or assign PIN for a student on a device (without queuing command)
+ *
+ * This is a simpler version that just returns the PIN without queuing device commands.
+ * Used when you want to queue commands manually.
+ *
+ * @param {number} deviceId - Device ID
+ * @param {number} studentId - Student ID
+ * @returns {Promise<number>} The assigned PIN
+ */
+async function assignDevicePin(deviceId, studentId) {
+  const { query } = require('../config/database');
+
+  // Check if student already has a PIN for this device
+  const existingResult = await query(
+    'SELECT device_pin FROM device_user_mappings WHERE device_id = $1 AND student_id = $2',
+    [deviceId, studentId]
+  );
+
+  if (existingResult.rows.length > 0) {
+    return existingResult.rows[0].device_pin;
+  }
+
+  // Get next available PIN
+  const pinResult = await query(
+    'SELECT COALESCE(MAX(device_pin), 0) + 1 as next_pin FROM device_user_mappings WHERE device_id = $1',
+    [deviceId]
+  );
+
+  const nextPin = pinResult.rows[0].next_pin;
+
+  // Create mapping
+  await query(
+    `INSERT INTO device_user_mappings (device_id, student_id, device_pin)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (device_id, student_id) DO NOTHING`,
+    [deviceId, studentId, nextPin]
+  );
+
+  return nextPin;
+}
+
+/**
  * Check for duplicate PINs (diagnostic function)
  *
  * This should NEVER return any results if the system is working correctly.
@@ -336,8 +378,10 @@ async function checkForDuplicatePins(deviceId = null) {
 
 module.exports = {
   assignNextDevicePin,
+  assignDevicePin, // Simple version - just assign PIN, no command queue
   assignBatchDevicePins,
   removeDevicePin,
   getDevicePins,
-  checkForDuplicatePins
+  checkForDuplicatePins,
+  getDeviceUserMapping: getDevicePins, // Alias for backwards compatibility
 };
