@@ -200,6 +200,12 @@ const Students = () => {
 
   // Handle field change with validation
   const handleFieldChange = (name, value) => {
+    // Remove leading zeros from RFID card ID
+    if (name === 'rfidUid' && value) {
+      // Remove all leading zeros, but keep at least one digit if the value is all zeros
+      value = value.replace(/^0+/, '') || '0';
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: value
