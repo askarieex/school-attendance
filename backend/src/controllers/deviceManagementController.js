@@ -223,7 +223,7 @@ const fullSyncStudents = async (req, res) => {
           DO UPDATE SET
             sync_status = 'pending',
             last_sync_attempt = CURRENT_TIMESTAMP,
-            sync_retries = CASE WHEN sync_status = 'failed' THEN 0 ELSE sync_retries END,
+            sync_retries = CASE WHEN device_user_sync_status.sync_status = 'failed' THEN 0 ELSE device_user_sync_status.sync_retries END,
             error_message = NULL,
             updated_at = CURRENT_TIMESTAMP
         `, [deviceId, student.id, pin]);
