@@ -166,12 +166,43 @@ const fullSyncStudents = async (req, res) => {
       }, 'No students found for this school');
     }
 
-    // Queue add command for each student
+    // Queue add command for each student (only if not already synced)
     let queued = 0;
     let skipped = 0;
+    let alreadySynced = 0;
 
     for (const student of students) {
       try {
+        // Check if student is already synced to this device
+        const existingSyncResult = await query(`
+          SELECT dss.sync_status, dum.device_pin, dc.status as pending_command_status
+          FROM device_user_sync_status dss
+          LEFT JOIN device_user_mappings dum ON dss.device_id = dum.device_id AND dss.student_id = dum.student_id
+          LEFT JOIN device_commands dc ON dc.device_id = dss.device_id
+            AND dc.command_type = 'add_user'
+            AND dc.command_string LIKE '%PIN=' || dum.device_pin || '%'
+            AND dc.status = 'pending'
+          WHERE dss.device_id = $1 AND dss.student_id = $2
+        `, [deviceId, student.id]);
+
+        // Skip if already synced or has pending command
+        if (existingSyncResult.rows.length > 0) {
+          const syncStatus = existingSyncResult.rows[0].sync_status;
+          const hasPendingCommand = existingSyncResult.rows[0].pending_command_status === 'pending';
+
+          if (syncStatus === 'synced') {
+            console.log(`   ⏭️  Student ${student.full_name} already synced, skipping`);
+            alreadySynced++;
+            continue;
+          }
+
+          if (hasPendingCommand) {
+            console.log(`   ⏳ Student ${student.full_name} has pending command, skipping`);
+            skipped++;
+            continue;
+          }
+        }
+
         // Get or assign device PIN
         const pin = await assignDevicePin(deviceId, student.id);
 
@@ -192,7 +223,7 @@ const fullSyncStudents = async (req, res) => {
           DO UPDATE SET
             sync_status = 'pending',
             last_sync_attempt = CURRENT_TIMESTAMP,
-            sync_retries = 0,
+            sync_retries = CASE WHEN sync_status = 'failed' THEN 0 ELSE sync_retries END,
             error_message = NULL,
             updated_at = CURRENT_TIMESTAMP
         `, [deviceId, student.id, pin]);
@@ -205,7 +236,7 @@ const fullSyncStudents = async (req, res) => {
       }
     }
 
-    console.log(`   ✅ Queued: ${queued}, Skipped: ${skipped}`);
+    console.log(`   ✅ Queued: ${queued}, Already synced: ${alreadySynced}, Skipped: ${skipped}`);
 
     sendSuccess(
       res,
@@ -214,10 +245,13 @@ const fullSyncStudents = async (req, res) => {
         deviceName: device.device_name || device.serial_number,
         totalStudents: students.length,
         commandsQueued: queued,
+        alreadySynced: alreadySynced,
         commandsSkipped: skipped,
-        estimatedSyncTime: `${Math.ceil(queued / 5)} minutes`, // Device processes ~5 commands per minute
+        estimatedSyncTime: queued > 0 ? `${Math.ceil(queued / 5)} minutes` : 'No sync needed', // Device processes ~5 commands per minute
       },
-      `Full sync initiated for device ${device.device_name || device.serial_number}. ${queued} student(s) queued for sync.`
+      queued > 0
+        ? `Full sync initiated for device ${device.device_name || device.serial_number}. ${queued} student(s) queued for sync.`
+        : `Device ${device.device_name || device.serial_number} is already in sync. ${alreadySynced} student(s) already synced.`
     );
 
   } catch (error) {

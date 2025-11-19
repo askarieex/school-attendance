@@ -315,10 +315,12 @@ const receiveCommandConfirmation = async (req, res) => {
     // Update DB status
     try {
       if (returnCode === 0) {
+        // Mark command as completed
         const result = await query(
           `UPDATE device_commands
            SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-           WHERE id = $1`,
+           WHERE id = $1
+           RETURNING device_id, command_type, command_string`,
           [commandId]
         );
         if (result.rowCount === 0) {
@@ -326,19 +328,69 @@ const receiveCommandConfirmation = async (req, res) => {
         } else {
           console.log(`✅ Command ${commandId} marked as COMPLETED`);
           console.log(`   Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+
+          // Update sync status for add_user commands
+          const command = result.rows[0];
+          if (command.command_type === 'add_user') {
+            // Extract PIN from command string (format: "C:1001:DATA USER PIN=123\t...")
+            const pinMatch = command.command_string.match(/PIN=(\d+)/);
+            if (pinMatch) {
+              const devicePin = parseInt(pinMatch[1]);
+
+              // Update sync status to 'synced'
+              const syncUpdateResult = await query(
+                `UPDATE device_user_sync_status
+                 SET sync_status = 'synced',
+                     last_sync_success = CURRENT_TIMESTAMP,
+                     sync_retries = 0,
+                     error_message = NULL
+                 WHERE device_id = $1 AND device_pin = $2`,
+                [command.device_id, devicePin]
+              );
+
+              if (syncUpdateResult.rowCount > 0) {
+                console.log(`   ✅ Sync status updated to 'synced' for PIN ${devicePin}`);
+              }
+            }
+          }
+
           console.log(`🟢 ==========================================\n`);
         }
       } else {
+        // Mark command as failed
         const result = await query(
           `UPDATE device_commands
            SET status = 'failed', error_message = $2
-           WHERE id = $1`,
+           WHERE id = $1
+           RETURNING device_id, command_type, command_string`,
           [commandId, `Device returned code ${returnCode}`]
         );
         if (result.rowCount === 0) {
           console.warn(`⚠️ Command ${commandId} not found in DB - may have been deleted or never existed`);
         } else {
           console.log(`❌ Command ${commandId} marked as failed (code=${returnCode})`);
+
+          // Update sync status for failed commands
+          const command = result.rows[0];
+          if (command.command_type === 'add_user') {
+            // Extract PIN from command string
+            const pinMatch = command.command_string.match(/PIN=(\d+)/);
+            if (pinMatch) {
+              const devicePin = parseInt(pinMatch[1]);
+
+              // Update sync status to 'failed'
+              await query(
+                `UPDATE device_user_sync_status
+                 SET sync_status = 'failed',
+                     error_message = $3,
+                     sync_retries = sync_retries + 1
+                 WHERE device_id = $1 AND device_pin = $2`,
+                [command.device_id, devicePin, `Device returned error code ${returnCode}`]
+              );
+
+              console.log(`   ❌ Sync status updated to 'failed' for PIN ${devicePin}`);
+            }
+          }
         }
       }
     } catch (dbErr) {

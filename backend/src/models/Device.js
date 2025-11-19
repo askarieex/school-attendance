@@ -102,7 +102,21 @@ class Device {
 
   static async findBySchool(schoolId) {
     const result = await query(
-      'SELECT * FROM devices WHERE school_id = $1 AND is_active = TRUE ORDER BY created_at DESC',
+      `SELECT
+        d.*,
+        COUNT(DISTINCT dum.student_id) as total_users,
+        CASE
+          WHEN COUNT(DISTINCT dum.student_id) > 0 THEN
+            ROUND((COUNT(DISTINCT CASE WHEN dss.sync_status = 'synced' THEN dum.student_id END)::NUMERIC /
+                   COUNT(DISTINCT dum.student_id)::NUMERIC) * 100)
+          ELSE 0
+        END as sync_health
+      FROM devices d
+      LEFT JOIN device_user_mappings dum ON d.id = dum.device_id
+      LEFT JOIN device_user_sync_status dss ON d.id = dss.device_id AND dum.student_id = dss.student_id
+      WHERE d.school_id = $1 AND d.is_active = TRUE
+      GROUP BY d.id
+      ORDER BY d.created_at DESC`,
       [schoolId]
     );
 
