@@ -149,6 +149,7 @@ export const schoolsAPI = {
   create: (data) => api.post('/super/schools', data),
   update: (id, data) => api.put(`/super/schools/${id}`, data),
   delete: (id) => api.delete(`/super/schools/${id}`),
+  permanentDelete: (id, confirmName) => api.delete(`/super/schools/${id}/permanent`, { data: { confirmName } }),
 };
 
 // Devices APIs

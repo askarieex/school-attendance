@@ -31,8 +31,11 @@ router.get('/schools/:id', superAdminController.getSchool);
 // PUT /api/v1/super/schools/:id
 router.put('/schools/:id', superAdminController.updateSchool);
 
-// DELETE /api/v1/super/schools/:id
+// DELETE /api/v1/super/schools/:id (soft delete - deactivate)
 router.delete('/schools/:id', superAdminController.deleteSchool);
+
+// DELETE /api/v1/super/schools/:id/permanent (hard delete - remove all data)
+router.delete('/schools/:id/permanent', superAdminController.permanentDeleteSchool);
 
 /**
  * DEVICE MANAGEMENT

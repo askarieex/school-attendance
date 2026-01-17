@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEdit, FiTrash2, FiSearch, FiMapPin, FiMail, FiPhone } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiSearch, FiMapPin, FiMail, FiPhone, FiAlertTriangle } from 'react-icons/fi';
 import { schoolsAPI } from '../utils/api';
 
 const Schools = () => {
@@ -18,6 +18,13 @@ const Schools = () => {
     adminEmail: '',
     adminPassword: '',
   });
+
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [schoolToDelete, setSchoolToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState(null); // 'deactivate' or 'permanent'
+  const [confirmName, setConfirmName] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchSchools();
@@ -56,15 +63,41 @@ const Schools = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to deactivate this school?')) {
-      try {
-        await schoolsAPI.delete(id);
-        alert('School deactivated successfully');
-        fetchSchools();
-      } catch (error) {
-        alert('Failed to deactivate school');
+  // Open delete options modal
+  const openDeleteModal = (school) => {
+    setSchoolToDelete(school);
+    setDeleteType(null);
+    setConfirmName('');
+    setShowDeleteModal(true);
+  };
+
+  // Close delete modal
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setSchoolToDelete(null);
+    setDeleteType(null);
+    setConfirmName('');
+    setIsDeleting(false);
+  };
+
+  // Perform the delete action
+  const performDelete = async () => {
+    if (!schoolToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      if (deleteType === 'deactivate') {
+        await schoolsAPI.delete(schoolToDelete.id);
+        alert('School deactivated successfully! It can be reactivated later.');
+      } else if (deleteType === 'permanent') {
+        const result = await schoolsAPI.permanentDelete(schoolToDelete.id, confirmName);
+        alert(`School "${schoolToDelete.name}" permanently deleted!\n\nDeleted: ${result.data?.deletedCounts?.students || 0} students, ${result.data?.deletedCounts?.attendanceLogs || 0} attendance logs, ${result.data?.deletedCounts?.devices || 0} devices`);
       }
+      closeDeleteModal();
+      fetchSchools();
+    } catch (error) {
+      alert(error.message || 'Failed to delete school');
+      setIsDeleting(false);
     }
   };
 
@@ -201,7 +234,7 @@ const Schools = () => {
                         <button
                           className="btn btn-danger"
                           style={{ padding: '6px 12px' }}
-                          onClick={() => handleDelete(school.id)}
+                          onClick={() => openDeleteModal(school)}
                         >
                           <FiTrash2 size={16} />
                         </button>
@@ -325,6 +358,158 @@ const Schools = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Options Modal */}
+      {showDeleteModal && schoolToDelete && (
+        <div className="modal-overlay" onClick={closeDeleteModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            {!deleteType ? (
+              // Step 1: Choose delete type
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <FiAlertTriangle color="#f59e0b" size={28} />
+                  Delete School
+                </h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                  Choose how to delete <strong>"{schoolToDelete.name}"</strong>
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Deactivate Option */}
+                  <button
+                    className="btn btn-outline"
+                    style={{
+                      padding: '16px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      border: '2px solid #e2e8f0',
+                      borderRadius: '12px',
+                    }}
+                    onClick={() => setDeleteType('deactivate')}
+                  >
+                    <span style={{ fontWeight: '600', color: '#f59e0b' }}>🔴 Deactivate (Recommended)</span>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      School will be marked inactive. All data is preserved and can be reactivated later.
+                    </span>
+                  </button>
+
+                  {/* Permanent Delete Option */}
+                  <button
+                    className="btn btn-outline"
+                    style={{
+                      padding: '16px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      border: '2px solid #fee2e2',
+                      borderRadius: '12px',
+                      background: '#fef2f2',
+                    }}
+                    onClick={() => setDeleteType('permanent')}
+                  >
+                    <span style={{ fontWeight: '600', color: '#dc2626' }}>⛔ Permanently Delete</span>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      School and ALL data will be permanently removed. This action CANNOT be undone!
+                    </span>
+                  </button>
+                </div>
+
+                <div style={{ marginTop: '24px' }}>
+                  <button className="btn btn-outline" onClick={closeDeleteModal} style={{ width: '100%' }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : deleteType === 'deactivate' ? (
+              // Step 2a: Confirm deactivation
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px' }}>
+                  Confirm Deactivation
+                </h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                  Are you sure you want to deactivate <strong>"{schoolToDelete.name}"</strong>?
+                  <br /><br />
+                  The school will be marked as inactive but all data will be preserved.
+                </p>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setDeleteType(null)}
+                    style={{ flex: 1 }}
+                    disabled={isDeleting}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: '#f59e0b', color: 'white' }}
+                    onClick={performDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? 'Deactivating...' : 'Deactivate School'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Step 2b: Confirm permanent deletion
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <FiAlertTriangle size={28} />
+                  DANGER: Permanent Deletion
+                </h2>
+
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+                  <p style={{ color: '#991b1b', fontWeight: '600', marginBottom: '8px' }}>
+                    This will permanently delete:
+                  </p>
+                  <ul style={{ color: '#b91c1c', fontSize: '14px', paddingLeft: '20px', margin: 0 }}>
+                    <li>All students and their records</li>
+                    <li>All attendance logs</li>
+                    <li>All teachers and class assignments</li>
+                    <li>All devices linked to this school</li>
+                    <li>School settings and configuration</li>
+                  </ul>
+                </div>
+
+                <p style={{ color: '#64748b', marginBottom: '12px' }}>
+                  Type <strong style={{ color: '#dc2626' }}>"{schoolToDelete.name}"</strong> to confirm:
+                </p>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Type school name here..."
+                  value={confirmName}
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  style={{ marginBottom: '20px' }}
+                />
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => { setDeleteType(null); setConfirmName(''); }}
+                    style={{ flex: 1 }}
+                    disabled={isDeleting}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ flex: 1 }}
+                    onClick={performDelete}
+                    disabled={isDeleting || confirmName.trim().toLowerCase() !== schoolToDelete.name.trim().toLowerCase()}
+                  >
+                    {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

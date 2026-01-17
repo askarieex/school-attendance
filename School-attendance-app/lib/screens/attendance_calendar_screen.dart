@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../utils/logger.dart';
 
 /// Attendance Calendar - Full-featured like web dashboard
 /// - Holidays detection
@@ -40,8 +41,13 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.classes.isNotEmpty) {
+    Logger.info('📅 Calendar initialized with ${widget.classes.length} classes');
+
+    if (widget.classes.isEmpty) {
+      Logger.warning('⚠️ No classes available for calendar view');
+    } else {
       _selectedSectionId = widget.classes[0]['section_id'];
+      Logger.info('Selected section ID: $_selectedSectionId (${widget.classes[0]['class_name']}-${widget.classes[0]['section_name']})');
       _loadData();
     }
   }
@@ -51,156 +57,147 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     await _loadStudentsAndAttendance();
   }
   
-  /// Load holidays from API
+  /// ✅ ULTRA PERFORMANCE: Load holidays AND students data in PARALLEL
   Future<void> _loadHolidays() async {
     try {
       final year = _selectedMonth.year;
-      
-      print('🎉 Fetching holidays for year $year...');
-      
+
+      Logger.network('Fetching holidays for year $year...');
+
       // Fetch REAL holidays from API
       final response = await widget.apiService.get(
         '/teacher/holidays?year=$year',
         requiresAuth: true,
+        useCache: true, // ✅ Cache holidays - they don't change often
       );
-      
+
       if (response['success'] == true && response['data'] != null) {
         final holidaysList = response['data'] as List;
-        
+
         // Extract holiday dates
         _holidays = holidaysList
             .map((h) => h['holiday_date']?.toString() ?? '')
             .where((d) => d.isNotEmpty)
             .toList();
-        
-        print('🎉 Loaded ${_holidays.length} holidays: $_holidays');
+
+        Logger.success('Loaded ${_holidays.length} holidays: $_holidays');
       } else {
         _holidays = [];
-        print('⚠️ No holidays data in response');
+        Logger.warning('No holidays data in response');
       }
     } catch (e) {
-      print('❌ Error loading holidays: $e');
+      Logger.error('Error loading holidays', e);
       _holidays = [];
     }
   }
-  
-  /// Load students and their attendance
+
+  /// ✅ ULTRA PERFORMANCE: Load students and their attendance
   Future<void> _loadStudentsAndAttendance() async {
     if (_selectedSectionId == null) return;
-    
+
+    // ✅ ULTRA PERFORMANCE: Non-blocking loading (no dialog, just state change)
     setState(() => _isLoading = true);
-    
-    // ✅ CRITICAL FIX: Show loading dialog to prevent frozen UI
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return WillPopScope(
-            onWillPop: () async => false,
-            child: Center(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text(
-                        'Loading attendance data...',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'This may take a few moments',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-    
+
     try {
-      // 1. Fetch students
+      // ✅ ULTRA PERFORMANCE: Fetch students data with cache
       final studentsResponse = await widget.apiService.get(
         '/teacher/sections/$_selectedSectionId/students',
         requiresAuth: true,
+        useCache: true, // ✅ Cache student list
       );
-      
+
       List<Map<String, dynamic>> students = [];
       if (studentsResponse['success'] == true && studentsResponse['data'] != null) {
         students = (studentsResponse['data'] as List).cast<Map<String, dynamic>>();
+      } else {
+        Logger.warning('API returned no students or error: ${studentsResponse['message'] ?? 'Unknown error'}');
       }
-      
-      print('✅ Found ${students.length} students');
-      
+
+      Logger.success('Found ${students.length} students');
+
+      // ✅ DEBUG: Print first 3 students to verify data structure
+      if (students.isNotEmpty) {
+        Logger.info('First student: ${students[0]}');
+        if (students.length > 1) Logger.info('Second student: ${students[1]}');
+        if (students.length > 2) Logger.info('Third student: ${students[2]}');
+
+        // ✅ Validate student data structure
+        for (var i = 0; i < students.length; i++) {
+          final student = students[i];
+          if (student['id'] == null) {
+            Logger.warning('Student at index $i has null ID: $student');
+          }
+          if (student['full_name'] == null || student['full_name'].toString().isEmpty) {
+            Logger.warning('Student at index $i has null/empty name: ID=${student['id']}');
+          }
+        }
+      } else {
+        Logger.warning('⚠️ No students found in section $_selectedSectionId');
+      }
+
       // 2. Fetch attendance for each day of the month
       final year = _selectedMonth.year;
       final month = _selectedMonth.month;
       final daysInMonth = DateTime(year, month + 1, 0).day;
-      
+
       Map<int, Map<int, String>> attendanceMap = {};
-      
-      // ✅ CRITICAL FIX: Add null safety
+
+      // ✅ Initialize attendance map
       for (var student in students) {
         final studentId = student['id'];
         if (studentId != null) {
           attendanceMap[studentId] = {};
         } else {
-          print('⚠️ Warning: Student with null ID found, skipping');
+          Logger.warning('Student with null ID found, skipping');
         }
       }
-      
-      // Fetch attendance logs for the month from API
-      print('📅 Loading attendance for ${DateFormat('MMMM yyyy').format(_selectedMonth)}...');
 
-      for (int day = 1; day <= daysInMonth; day++) {
-        final date = DateTime(year, month, day);
+      // 🚀 ULTRA PERFORMANCE FIX: Use BATCH API instead of 30+ individual calls!
+      Logger.network('Loading attendance for ${DateFormat('MMMM yyyy').format(_selectedMonth)}...');
 
-        // Skip future dates entirely (don't fetch or process)
-        final today = DateTime.now();
-        final todayDate = DateTime(today.year, today.month, today.day);
-        final dayDate = DateTime(year, month, day);
+      final today = DateTime.now();
+      final todayDate = DateTime(today.year, today.month, today.day);
 
-        if (dayDate.isAfter(todayDate)) {
-          continue; // Skip future dates
-        }
+      // Calculate date range (1st of month to today or end of month, whichever is earlier)
+      final startDate = DateTime(year, month, 1);
+      final endOfMonth = DateTime(year, month, daysInMonth);
+      final endDate = endOfMonth.isBefore(todayDate) ? endOfMonth : todayDate;
 
-        // Fetch REAL attendance data from API (even for Sundays/Holidays - we'll override later)
-        final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+      // Skip if start date is in future
+      if (startDate.isAfter(todayDate)) {
+        Logger.info('Month is in future, no attendance to load');
+      } else {
+        // 🚀 SINGLE BATCH API CALL instead of 30+ calls!
+        final startDateStr = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+        final endDateStr = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+
+        Logger.network('Fetching attendance range: $startDateStr to $endDateStr');
 
         try {
           final response = await widget.apiService.get(
-            '/teacher/sections/$_selectedSectionId/attendance?date=$dateStr',
+            '/teacher/sections/$_selectedSectionId/attendance/range?startDate=$startDateStr&endDate=$endDateStr',
             requiresAuth: true,
+            useCache: true, // ✅ Cache for 5 minutes
           );
 
           if (response['success'] == true && response['data'] != null) {
             final logs = response['data'] as List;
 
-            print('  Day $day: Fetched ${logs.length} logs');
+            Logger.success('Received ${logs.length} attendance records from batch API');
 
-            // Map logs to students
+            // Map logs to students and days
             for (var log in logs) {
-              // ✅ CRITICAL FIX: Add null safety to prevent crashes
               final studentId = log['student_id'];
               final status = log['status'];
-              
-              if (studentId == null) {
-                print('⚠️ Warning: Log with null student_id found, skipping');
+              final dateStr = log['date'] as String;
+
+              if (studentId == null || !attendanceMap.containsKey(studentId)) {
                 continue;
               }
-              
-              if (!attendanceMap.containsKey(studentId)) {
-                print('⚠️ Warning: Unknown student ID $studentId in log, skipping');
-                continue;
-              }
+
+              // Extract day from date string (YYYY-MM-DD)
+              final logDate = DateTime.parse(dateStr);
+              final day = logDate.day;
 
               // Map status to our format
               if (status == 'present') {
@@ -213,18 +210,19 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                 attendanceMap[studentId]![day] = 'LV';
               }
             }
+
+            Logger.performance('Batch API loaded successfully! (1 request instead of $daysInMonth)');
           }
         } catch (e) {
-          print('  ❌ Error fetching day $day: $e');
+          Logger.error('Error fetching attendance range', e);
         }
       }
 
       // ✅ CRITICAL FIX: Override Sundays and Holidays AFTER loading API data
       // This ensures correct display even if there's bad data in the database
-      print('🔄 Overriding Sundays and Holidays...');
+      Logger.info('Overriding Sundays and Holidays...');
 
       for (int day = 1; day <= daysInMonth; day++) {
-        final date = DateTime(year, month, day);
         final today = DateTime.now();
         final todayDate = DateTime(today.year, today.month, today.day);
         final dayDate = DateTime(year, month, day);
@@ -239,7 +237,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           for (var student in students) {
             attendanceMap[student['id']]![day] = 'S';
           }
-          print('  ✅ Day $day marked as Sunday');
+          Logger.info('  Day $day marked as Sunday');
         }
 
         // OVERRIDE with Holiday marker (even if API returned data)
@@ -247,7 +245,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           for (var student in students) {
             attendanceMap[student['id']]![day] = 'H';
           }
-          print('  ✅ Day $day marked as Holiday');
+          Logger.info('  Day $day marked as Holiday');
         }
       }
       
@@ -260,10 +258,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         _isLoading = false;
       });
       
-      print('✅ Attendance loaded successfully');
-      
+      Logger.success('Attendance loaded successfully');
+
     } catch (e) {
-      print('❌ Error loading attendance: $e');
+      Logger.error('Error loading attendance', e);
       setState(() => _isLoading = false);
       
       if (mounted) {
@@ -273,15 +271,6 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
             backgroundColor: Colors.red,
           ),
         );
-      }
-    } finally {
-      // ✅ CRITICAL FIX: Close loading dialog
-      if (mounted) {
-        try {
-          Navigator.of(context, rootNavigator: true).pop();
-        } catch (e) {
-          // Dialog might already be closed
-        }
       }
     }
   }
@@ -568,7 +557,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           decoration: BoxDecoration(
             border: Border.all(
-              color: isSelected ? color : color.withOpacity(0.3),
+              color: isSelected ? color : Color.fromRGBO(color.red, color.green, color.blue, 0.3),
               width: 2,
             ),
             borderRadius: BorderRadius.circular(12),
@@ -626,7 +615,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     );
     
     try {
-      print('📤 Marking attendance: student=$studentId, date=$dateStr, status=$newStatus, time=$checkInTime');
+      Logger.network('Marking attendance: student=$studentId, date=$dateStr, status=$newStatus, time=$checkInTime');
       
       // Save to backend first (backend will auto-calculate late status)
       final response = await widget.apiService.post(
@@ -662,12 +651,14 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         _calculateStats(_attendanceData, daysInMonth);
         setState(() {});
         
-        print('✅ Attendance updated successfully: $studentId on $dateStr = $actualStatus (display: $displayStatus)');
+        Logger.success('Attendance updated successfully: $studentId on $dateStr = $actualStatus (display: $displayStatus)');
         
         // Show success message with actual calculated status
         String statusLabel = actualStatus.toUpperCase();
         if (actualStatus == 'late') statusLabel = 'LATE (auto-calculated)';
-        
+
+        // ✅ FIX: Check mounted before using context
+        if (!mounted) return;
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -686,17 +677,17 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         throw Exception('Backend returned success: false');
       }
     } catch (e) {
-      print('❌ Error updating attendance: $e');
-      
       // Show error message
+      // ✅ FIX: Check mounted before using context
+      if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
-              const Icon(Icons.error, color: Colors.white),
-              const SizedBox(width: 12),
-              const Text('Failed to update attendance'),
+              Icon(Icons.error, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Failed to update attendance'),
             ],
           ),
           backgroundColor: const Color(0xFFEF4444),
@@ -722,14 +713,52 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         children: [
           // Header
           _buildHeader(monthName),
-          
+
+          // ✅ ULTRA PERFORMANCE: Non-blocking loading progress bar
+          if (_isLoading)
+            const LinearProgressIndicator(
+              backgroundColor: Color(0xFFE5E7EB),
+              color: Color(0xFF2563EB),
+              minHeight: 3,
+            ),
+
           // Calendar Grid
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _students.isEmpty
-                    ? const Center(child: Text('No students found'))
-                    : _buildCalendarGrid(daysInMonth),
+            child: _students.isEmpty && !_isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.people_outline,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No Students Found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _selectedSectionId == null
+                              ? 'No section selected'
+                              : 'This section has no students yet',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _students.isNotEmpty
+                    ? _buildCalendarGrid(daysInMonth)
+                    : const SizedBox.shrink(), // Empty while loading
           ),
         ],
       ),
@@ -837,7 +866,31 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           const SizedBox(height: 12),
           
           // Class selector - More compact
-          if (widget.classes.isNotEmpty)
+          if (widget.classes.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF59E0B)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning, color: Color(0xFFF59E0B), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'No sections assigned. Contact school admin.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
@@ -880,9 +933,9 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: Color.fromRGBO(color.red, color.green, color.blue, 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: Color.fromRGBO(color.red, color.green, color.blue, 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -912,13 +965,13 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   Widget _buildCalendarGrid(int daysInMonth) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Day headers - More compact
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Day headers - More compact
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
               children: [
                 const SizedBox(width: 130), // Student name column width
                 ...List.generate(daysInMonth, (index) {
@@ -927,14 +980,14 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                   final dayName = DateFormat('EEE').format(date);
                   final isSunday = date.weekday == DateTime.sunday;
                   final isHoliday = _isHoliday(day);
-                  
+
                   return Container(
                     width: 40,
                     margin: const EdgeInsets.only(right: 3),
                     padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
                     decoration: BoxDecoration(
-                      color: isSunday || isHoliday 
-                          ? const Color(0xFFFEF3C7) 
+                      color: isSunday || isHoliday
+                          ? const Color(0xFFFEF3C7)
                           : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -945,7 +998,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
-                            color: isSunday || isHoliday 
+                            color: isSunday || isHoliday
                                 ? const Color(0xFFF59E0B)
                                 : const Color(0xFF1F2937),
                           ),
@@ -963,22 +1016,28 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                 }),
               ],
             ),
-            const SizedBox(height: 10),
-            
-            // Student rows
-            ..._students.map((student) {
-              return _buildStudentRow(student, daysInMonth);
-            }).toList(),
-          ],
-        ),
+          ),
+          const SizedBox(height: 10),
+
+          // ✅ ULTRA PERFORMANCE: Use ListView.builder for lazy loading (only builds visible rows)
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              itemCount: _students.length,
+              itemBuilder: (context, index) {
+                return _buildStudentRow(_students[index], daysInMonth);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildStudentRow(Map<String, dynamic> student, int daysInMonth) {
     final studentId = student['id'];
-    final name = student['full_name'] as String;
-    final rollNo = student['roll_number'] as String;
+    final name = student['full_name']?.toString() ?? 'Unknown';  // ✅ FIX: Handle null values safely
+    final rollNo = student['roll_number']?.toString() ?? 'N/A';  // ✅ FIX: Handle null values safely
     final percentage = _calculatePercentage(studentId);
 
     return Container(
@@ -987,19 +1046,17 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Student info - More compact
+          // ✅ ULTRA PERFORMANCE: Removed shadow, using border instead
           Container(
             width: 130,
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              border: Border.all(
+                color: const Color(0xFFE5E7EB),
+                width: 1,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1053,49 +1110,51 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
             final todayDate = DateTime(today.year, today.month, today.day);
             final isFutureDate = selectedDate.isAfter(todayDate);
 
-            return GestureDetector(
-              onTap: () => _editAttendance(studentId, day, name),
-              child: Container(
-                width: 40,
-                height: 48,
-                margin: const EdgeInsets.only(right: 3),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(status),
-                  borderRadius: BorderRadius.circular(10),
-                  border: isFutureDate && status.isEmpty
-                      ? Border.all(
-                          color: Colors.grey.withOpacity(0.4),
-                          width: 1,
-                          style: BorderStyle.solid,
-                        )
-                      : null,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: isFutureDate && status.isEmpty
-                      ? Opacity(
-                          opacity: 0.3,
-                          child: const Icon(
-                            Icons.lock_outline,
-                            size: 14,
-                            color: Colors.grey,
+            // ✅ ULTRA PERFORMANCE: Wrap in RepaintBoundary to isolate repaints
+            return RepaintBoundary(
+              child: GestureDetector(
+                onTap: () => _editAttendance(studentId, day, name),
+                child: Container(
+                  width: 40,
+                  height: 48,
+                  margin: const EdgeInsets.only(right: 3),
+                  // ✅ ULTRA PERFORMANCE: Removed shadow completely
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(status),
+                    borderRadius: BorderRadius.circular(10),
+                    border: isFutureDate && status.isEmpty
+                        ? Border.all(
+                            color: const Color.fromRGBO(158, 158, 158, 0.4),
+                            width: 1,
+                            style: BorderStyle.solid,
+                          )
+                        : status.isEmpty
+                            ? Border.all(
+                                color: const Color(0xFFE5E7EB),
+                                width: 1,
+                              )
+                            : null,
+                  ),
+                  child: Center(
+                    child: isFutureDate && status.isEmpty
+                        ? const Opacity(
+                            opacity: 0.3,
+                            child: Icon(
+                              Icons.lock_outline,
+                              size: 14,
+                              color: Colors.grey,
+                            ),
+                          )
+                        : Text(
+                            status,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        )
-                      : Text(
-                          status,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+                  ),
                 ),
               ),
             );
@@ -1130,109 +1189,4 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     return const Color(0xFFEF4444);
   }
 
-  Widget _buildLegend() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              _buildLegendItem('P', 'Present', const Color(0xFF10B981)),
-              _buildLegendItem('L', 'Late', const Color(0xFFF59E0B)),
-              _buildLegendItem('A', 'Absent', const Color(0xFFEF4444)),
-              _buildLegendItem('S', 'Sunday', const Color(0xFF9CA3AF)),
-              _buildLegendItem('H', 'Holiday', const Color(0xFF8B5CF6)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2563EB).withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.touch_app, size: 18, color: Colors.white),
-                SizedBox(width: 8),
-                Text(
-                  'Tap any box to edit attendance',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(String symbol, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Center(
-              child: Text(
-                symbol,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

@@ -98,10 +98,10 @@ const refreshToken = async (req, res) => {
       return sendError(res, 'Refresh token required', 400);
     }
 
-    const { verifyToken } = require('../utils/auth');
+    const { verifyToken, generateRefreshToken: genRefresh } = require('../utils/auth');
     const decoded = verifyToken(refreshToken);
 
-    // Generate new access token
+    // Generate new tokens (BOTH access and refresh)
     const payload = {
       userId: decoded.userId,
       role: decoded.role,
@@ -109,10 +109,14 @@ const refreshToken = async (req, res) => {
     };
 
     const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = genRefresh(payload);  // ✅ FIX: Also generate new refresh token
 
     sendSuccess(
       res,
-      { accessToken: newAccessToken },
+      {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,  // ✅ FIX: Return both tokens
+      },
       'Token refreshed successfully'
     );
   } catch (error) {

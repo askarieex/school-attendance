@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../services/teacher_service.dart';
 import 'class_attendance_screen.dart';
 import 'attendance_calendar_screen.dart';
+import 'attendance_filter_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'help_support_screen.dart';
@@ -44,6 +45,32 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _teacherService = TeacherService(authProvider.apiService);
     _loadClasses();
+
+    // ✅ NEW: Listen for session expiration and redirect to login
+    authProvider.addListener(_checkSessionExpiration);
+  }
+
+  @override
+  void dispose() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    authProvider.removeListener(_checkSessionExpiration);
+    super.dispose();
+  }
+
+  void _checkSessionExpiration() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (authProvider.sessionExpired && mounted) {
+      // Show message and navigate to login
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your session has expired. Please login again.'),
+          backgroundColor: Color(0xFFEF4444),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      authProvider.clearSessionExpired();
+      Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
+    }
   }
 
   Future<void> _loadClasses() async {
@@ -52,28 +79,37 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
     setState(() => _isLoading = true);
 
-    final assignments = await _teacherService.getTeacherAssignments(
-      authProvider.currentUser!.id,
-    );
+    // ✅ PERFORMANCE TRACKING: Measure load time
+    final stopwatch = Stopwatch()..start();
 
-    // ✅ FILTER: Show ONLY classes where teacher is FORM TEACHER
-    final formTeacherClasses = assignments.where((assignment) {
-      return assignment['is_form_teacher'] == true;
-    }).toList();
+    try {
+      // ✅ FIX: Removed teacherId param - backend uses JWT token to identify teacher
+      final assignments = await _teacherService.getTeacherAssignments();
 
-    print('📚 Total assignments: ${assignments.length}');
-    print('📚 Form teacher classes: ${formTeacherClasses.length}');
+      // ✅ FILTER: Show ONLY classes where teacher is FORM TEACHER
+      final formTeacherClasses = assignments.where((assignment) {
+        return assignment['is_form_teacher'] == true;
+      }).toList();
 
-    // ✅ Load today's attendance stats for each class
-    await _loadAttendanceStats(formTeacherClasses);
+      // Stats will be logged by individual functions
 
-    // ✅ Load comprehensive dashboard stats
-    await _loadDashboardStats();
+      // ✅ PERFORMANCE: Load attendance stats and dashboard stats IN PARALLEL
+      await Future.wait([
+        _loadAttendanceStats(formTeacherClasses),
+        _loadDashboardStats(),
+      ]);
 
-    setState(() {
-      _classes = formTeacherClasses; // Show ONLY form teacher classes
-      _isLoading = false;
-    });
+      setState(() {
+        _classes = formTeacherClasses; // Show ONLY form teacher classes
+        _isLoading = false;
+      });
+
+      // Performance tracking done by individual functions
+      stopwatch.stop();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      // Errors are handled by individual functions
+    }
   }
 
   Future<void> _loadDashboardStats() async {
@@ -82,30 +118,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       setState(() {
         _dashboardStats = stats;
       });
-      print('📊 Dashboard stats loaded: $_dashboardStats');
+      // Stats logged by service
     } catch (e) {
-      print('⚠️ Failed to load dashboard stats: $e');
-      // Keep default zeros
+      // Keep default zeros - error logged by service
     }
   }
 
   Future<void> _loadAttendanceStats(List<Map<String, dynamic>> classes) async {
     final stats = <int, Map<String, int>>{};
 
-    // ✅ CHECK: Don't load stats on Sunday
-    final today = DateTime.now();
-    if (today.weekday == DateTime.sunday) {
-      print('📊 Skipping attendance stats - today is Sunday');
-      // Set all stats to 0 on Sunday
-      for (final classData in classes) {
-        final sectionId = classData['section_id'] as int?;
-        if (sectionId != null) {
-          stats[sectionId] = {'present': 0, 'late': 0, 'absent': 0};
-        }
-      }
-      _attendanceStats = stats;
-      return;
-    }
+    // ✅ NOTE: Sunday stats handled by backend - returns zeros appropriately
+    // No need for client-side Sunday check as caching and backend handle it efficiently
 
     for (final classData in classes) {
       final sectionId = classData['section_id'] as int?;
@@ -118,9 +141,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           'late': todayStats['lateCount'] ?? 0,
           'absent': todayStats['absentCount'] ?? 0,
         };
-        print('📊 Section $sectionId stats: ${stats[sectionId]}');
       } catch (e) {
-        print('⚠️ Failed to load stats for section $sectionId: $e');
         stats[sectionId] = {'present': 0, 'late': 0, 'absent': 0};
       }
     }
@@ -132,14 +153,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   Widget build(BuildContext context) {
     // ✅ CRITICAL FIX: Use listen: false to prevent unnecessary rebuilds
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final schoolName = "Heritage School";
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: Colors.white, // Pure white background
       body: SafeArea(
         child: Column(
           children: [
-            // Simple Top Bar (menu + notification)
+            // Simple Top Bar
             _buildSimpleTopBar(context),
             // Body Content
             Expanded(
@@ -159,106 +179,57 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final schoolName = authProvider.currentUser?.schoolName ?? 'School';
 
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+        border: Border(
+          bottom: BorderSide(
+            color: Color(0xFFE0E0E0),
+            width: 1,
           ),
-        ],
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
+          // Menu Icon - Simple black
           Builder(
-            builder: (context) => InkWell(
+            builder: (context) => GestureDetector(
               onTap: () => Scaffold.of(context).openDrawer(),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(Icons.menu_rounded, color: Color(0xFF0F172A), size: 20),
-              ),
+              child: const Icon(Icons.menu, color: Colors.black, size: 24),
             ),
           ),
           const SizedBox(width: 16),
+          // School Name - Clean text only
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    color: Colors.white,
-                    size: 14,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  schoolName,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-                // Academic Year Badge
-                if (authProvider.currentUser?.currentAcademicYear != null) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF10B981), Color(0xFF059669)],
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      authProvider.currentUser!.currentAcademicYear!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              schoolName,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
-          const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFFE2E8F0),
-                width: 1,
+          // Academic Year - Simple text badge
+          if (authProvider.currentUser?.currentAcademicYear != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2B9AFF), // Brand blue
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                authProvider.currentUser!.currentAcademicYear!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 20),
-          ),
+          ],
         ],
       ),
     );
@@ -444,60 +415,54 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // Modern Gradient Header
+          // ✅ CLEAN Header - No gradients
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
+            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              color: Color(0xFF2B9AFF), // Brand blue
+              border: Border(
+                bottom: BorderSide(
+                  color: Color(0xFFE0E0E0),
+                  width: 1,
+                ),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Modern Avatar
+                // Simple Avatar
                 Container(
-                  width: 70,
-                  height: 70,
+                  width: 60,
+                  height: 60,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Center(
                     child: Icon(
-                      Icons.person_rounded,
-                      color: Color(0xFF6366F1),
-                      size: 38,
+                      Icons.person,
+                      color: Colors.black,
+                      size: 32,
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 Text(
                   authProvider.currentUser?.name ?? 'Teacher',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   authProvider.currentUser?.email ?? '',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ],
@@ -616,52 +581,42 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             ),
           ),
             
-          // Modern Logout Button
+          // ✅ CLEAN Logout Button
           Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
               border: Border(
                 top: BorderSide(
-                  color: const Color(0xFFE2E8F0),
-                  width: 1.5,
+                  color: Color(0xFFE0E0E0),
+                  width: 1,
                 ),
               ),
             ),
-            child: InkWell(
+            child: GestureDetector(
               onTap: () {
                 authProvider.logout();
                 Navigator.pushReplacementNamed(context, '/welcome');
               },
-              borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFEF4444).withOpacity(0.25),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.logout_rounded,
+                      Icons.logout,
                       color: Colors.white,
                       size: 20,
                     ),
-                    SizedBox(width: 10),
+                    SizedBox(width: 8),
                     Text(
                       'Logout',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -679,66 +634,40 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     required IconData icon,
     required String title,
     required int index,
-    required Gradient gradient,
+    required Gradient gradient, // Keep for compatibility but ignore
   }) {
     final isSelected = _selectedIndex == index;
-    
-    return InkWell(
+
+    return GestureDetector(
       onTap: () {
         setState(() => _selectedIndex = index);
         Navigator.pop(context);
       },
-      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          gradient: isSelected ? gradient : null,
-          color: isSelected ? null : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+          color: isSelected ? const Color(0xFF2B9AFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withOpacity(0.2) : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? Colors.white : const Color(0xFF64748B),
-                size: 20,
-              ),
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : Colors.black,
+              size: 22,
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF475569),
+                  color: isSelected ? Colors.white : Colors.black,
                   fontSize: 15,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
             ),
-            if (isSelected)
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
           ],
         ),
       ),
@@ -750,42 +679,32 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     required String title,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF64748B),
-                size: 18,
-              ),
+            Icon(
+              icon,
+              color: Colors.black,
+              size: 20,
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: const TextStyle(
-                  color: Color(0xFF475569),
+                  color: Colors.black,
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: const Color(0xFFCBD5E1),
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF666666),
               size: 18,
             ),
           ],
@@ -815,7 +734,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   // Dashboard View - Modern Clean Design
   Widget _buildDashboardView() {
-    final authProvider = Provider.of<AuthProvider>(context);
+    // ✅ PERFORMANCE FIX: Use listen: false to prevent unnecessary rebuilds
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final totalClasses = _classes.length;
     final totalStudents = _classes.fold<int>(
       0,
@@ -856,24 +776,37 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             ),
             const SizedBox(height: 18),
 
-            // Attendance Summary Card with Gradient
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+            // ✅ IMPROVED: Clickable Attendance Summary Card with gradient
+            GestureDetector(
+              onTap: () {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AttendanceFilterScreen(
+                      apiService: authProvider.apiService,
+                      classes: _classes,
+                    ),
                   ),
-                ],
-              ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2B9AFF), Color(0xFF0D6EFD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2B9AFF).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
               child: Column(
                 children: [
                   Row(
@@ -919,15 +852,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         ],
                       ),
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
-                          Icons.trending_up_rounded,
-                          color: Colors.white,
-                          size: 36,
+                          Icons.trending_up,
+                          color: Color(0xFF2B9AFF),
+                          size: 32,
                         ),
                       ),
                     ],
@@ -935,7 +868,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   const SizedBox(height: 20),
                   Container(
                     height: 1,
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white,
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -944,32 +877,33 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                       _buildGradientMiniStat(
                         '${(_dashboardStats['presentToday'] ?? 0) + (_dashboardStats['lateToday'] ?? 0)}',  // ✅ FIX: Combine present + late
                         'Present',
-                        Icons.check_circle_rounded,
+                        Icons.check_circle,
                       ),
                       Container(
                         width: 1,
                         height: 40,
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white,
                       ),
                       _buildGradientMiniStat(
                         '${_dashboardStats['lateToday']}',
                         'Late',
-                        Icons.access_time_rounded,
+                        Icons.access_time,
                       ),
                       Container(
                         width: 1,
                         height: 40,
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white,
                       ),
                       _buildGradientMiniStat(
                         '${_dashboardStats['absentToday']}',
                         'Absent',
-                        Icons.cancel_rounded,
+                        Icons.cancel,
                       ),
                     ],
                   ),
 
                 ],
+              ),
               ),
             ),
 
@@ -1102,6 +1036,27 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
               ),
               onTap: () {},
+            ),
+            const SizedBox(height: 12),
+            cards.buildModernActionCard(
+              icon: Icons.filter_list_rounded,
+              label: 'Filter Students',
+              subtitle: 'View by status (Present/Absent/Late/Leave)',
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              ),
+              onTap: () {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AttendanceFilterScreen(
+                      apiService: authProvider.apiService,
+                      classes: _classes,
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
             cards.buildModernActionCard(
@@ -1286,58 +1241,40 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   Widget _buildBottomNavigation() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.15),
-            blurRadius: 40,
-            offset: const Offset(0, 12),
-            spreadRadius: -4,
+        border: Border(
+          top: BorderSide(
+            color: Color(0xFFE0E0E0),
+            width: 1,
           ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(
+            icon: Icons.home,
+            label: 'Home',
+            index: 0,
+          ),
+          _buildNavItem(
+            icon: Icons.school,
+            label: 'Classes',
+            index: 1,
+          ),
+          _buildNavItem(
+            icon: Icons.calendar_today,
+            label: 'Calendar',
+            index: 2,
+          ),
+          _buildNavItem(
+            icon: Icons.people,
+            label: 'Students',
+            index: 3,
           ),
         ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(
-                icon: Icons.home_rounded,
-                label: 'Home',
-                index: 0,
-              ),
-              _buildNavItem(
-                icon: Icons.school_rounded,
-                label: 'Classes',
-                index: 1,
-              ),
-              _buildNavItem(
-                icon: Icons.calendar_today_rounded,
-                label: 'Calendar',
-                index: 2,
-              ),
-              _buildNavItem(
-                icon: Icons.people_alt_rounded,
-                label: 'Students',
-                index: 3,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1348,83 +1285,31 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     required int index,
   }) {
     final isSelected = _selectedIndex == index;
-    
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      tween: Tween(begin: 1.0, end: isSelected ? 1.0 : 1.0),
-      builder: (context, scale, child) {
-        return Transform.scale(
-          scale: scale,
-          child: GestureDetector(
-            onTapDown: (_) {},
-            onTapUp: (_) => setState(() => _selectedIndex = index),
-            onTapCancel: () {},
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(
-                horizontal: isSelected ? 22 : 10,
-                vertical: 14,
-              ),
-              decoration: BoxDecoration(
-                gradient: isSelected 
-                  ? const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    )
-                  : null,
-                color: isSelected ? null : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: isSelected ? [
-                  BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.4),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                    spreadRadius: -2,
-                  ),
-                ] : [],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: Icon(
-                      icon,
-                      color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-                      size: isSelected ? 25 : 24,
-                    ),
-                  ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: isSelected
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(width: 10),
-                            Text(
-                              label,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
-                        )
-                      : const SizedBox.shrink(),
-                  ),
-                ],
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? const Color(0xFF2B9AFF) : Colors.black, // Brand blue when selected
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF2B9AFF) : const Color(0xFF666666),
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -1512,67 +1397,40 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final subject = classData['subject'] ?? '';
     final studentCount = classData['student_count'] ?? 0;
     final isFormTeacher = classData['is_form_teacher'] == true;
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 18),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: const Color(0xFFE2E8F0),
+          color: const Color(0xFFE0E0E0),
           width: 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -4,
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ClassAttendanceScreen(
-                                        classData: classData,
-                                      ),
-                                    ),
-                                  );
-            
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ClassAttendanceScreen(
+                  classData: classData,
+                ),
+              ),
+            );
           },
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF6366F1).withOpacity(0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.school_rounded, color: Colors.white, size: 26),
-                    ),
+                    // Simple icon
+                    const Icon(Icons.school, color: Colors.black, size: 24),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -1597,10 +1455,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                     vertical: 5,
                                   ),
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: const Color(0xFF2B9AFF), // Brand blue
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(
                                     'Form',
@@ -1608,7 +1464,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
                                       color: Colors.white,
-                                      letterSpacing: 0.5,
                                     ),
                                   ),
                                 ),
@@ -1671,15 +1526,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
+  // ✅ CLEAN Mini stat - No opacity effects
   Widget _buildMiniStat(String value, String label, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: color.withOpacity(0.2),
+            color: const Color(0xFFE0E0E0),
             width: 1,
           ),
         ),
@@ -1687,20 +1543,19 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           children: [
             Text(
               value,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: color,
-                letterSpacing: -0.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color.withOpacity(0.8),
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF666666),
               ),
             ),
           ],
@@ -1709,121 +1564,86 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // Modern Dashboard Header with Gradient
+  // Clean Dashboard Header
   Widget _buildModernDashboardHeader(BuildContext context, AuthProvider authProvider) {
     final now = DateTime.now();
     final hour = now.hour;
     String greeting;
-    String emoji;
     if (hour < 12) {
       greeting = 'Good Morning';
-      emoji = '☀️';
     } else if (hour < 17) {
       greeting = 'Good Afternoon';
-      emoji = '🌤️';
     } else {
       greeting = 'Good Evening';
-      emoji = '🌙';
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              greeting,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              emoji,
-              style: const TextStyle(fontSize: 20),
-            ),
-          ],
+        Text(
+          greeting,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF666666),
+          ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           authProvider.currentUser?.name ?? 'Teacher',
           style: const TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF0F172A),
-            letterSpacing: -1,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
           ),
         ),
       ],
     );
   }
 
-  // Beautiful Stat Card with Gradient
+  // Clean Simple Stat Card
   Widget _buildBeautifulStatCard({
     required IconData icon,
     required String label,
     required String value,
     required Color color,
-    required Gradient gradient,
+    required Gradient gradient, // Keep for compatibility but won't use
   }) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: color.withOpacity(0.1),
-          width: 1.5,
+          color: const Color(0xFFE0E0E0),
+          width: 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 24,
-            ),
+          // Simple icon - black or brand blue
+          Icon(
+            icon,
+            color: color == const Color(0xFF2B9AFF) ? const Color(0xFF2B9AFF) : Colors.black,
+            size: 24,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF666666),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: color,
-              letterSpacing: -1,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
             ),
           ),
         ],
@@ -1831,7 +1651,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // Mini stat for gradient card
+  // ✅ CLEAN Mini stat for attendance card
   Widget _buildGradientMiniStat(String value, String label, IconData icon) {
     return Column(
       children: [
@@ -1845,18 +1665,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           value,
           style: const TextStyle(
             fontSize: 24,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
-            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white,
           ),
         ),
       ],

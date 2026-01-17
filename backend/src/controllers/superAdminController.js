@@ -137,6 +137,37 @@ const deleteSchool = async (req, res) => {
   }
 };
 
+// Permanently delete school and ALL data
+const permanentDeleteSchool = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { confirmName } = req.body;
+
+    // Find school
+    const school = await School.findById(id);
+
+    if (!school) {
+      return sendError(res, 'School not found', 404);
+    }
+
+    // Require confirmation by matching school name
+    if (!confirmName || confirmName.trim().toLowerCase() !== school.name.trim().toLowerCase()) {
+      return sendError(res, 'School name does not match. Please type the exact school name to confirm deletion.', 400);
+    }
+
+    // Perform permanent deletion
+    const result = await School.permanentDelete(id);
+
+    sendSuccess(res, {
+      message: `School "${result.schoolName}" and all related data permanently deleted`,
+      deletedCounts: result.deletedCounts,
+    }, 'School permanently deleted');
+  } catch (error) {
+    console.error('Permanent delete school error:', error);
+    sendError(res, 'Failed to permanently delete school: ' + error.message, 500);
+  }
+};
+
 /**
  * DEVICE MANAGEMENT
  */
@@ -317,6 +348,7 @@ module.exports = {
   getSchool,
   updateSchool,
   deleteSchool,
+  permanentDeleteSchool,
 
   // Devices
   getDevices,

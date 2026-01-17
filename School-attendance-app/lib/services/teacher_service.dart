@@ -1,42 +1,38 @@
 import 'api_service.dart';
-import '../config/api_config.dart';
+import '../utils/logger.dart';
 
 /// Teacher Service - Handles teacher-specific API calls
 class TeacherService {
   final ApiService _apiService;
-  
+
   TeacherService(this._apiService);
   
-  /// Get teacher's assigned classes/sections from /auth/me
-  /// GET /api/v1/auth/me (returns assignments for teachers)
-  Future<List<Map<String, dynamic>>> getTeacherAssignments(String teacherId) async {
+  /// Get teacher's assigned classes/sections
+  /// GET /api/v1/teacher/my-sections (dedicated teacher sections endpoint)
+  Future<List<Map<String, dynamic>>> getTeacherAssignments() async {
     try {
-      print('📚 Fetching teacher assignments from /auth/me');
-      
-      // Use /auth/me endpoint which includes assignments for teachers
+      Logger.network('Fetching teacher sections from /teacher/my-sections');
+
+      // ✅ PERFORMANCE: Enable caching - sections don't change frequently
       final response = await _apiService.get(
-        ApiConfig.getMe,
+        '/teacher/my-sections',
         requiresAuth: true,
+        useCache: true,  // ✅ ENABLE caching for better performance
       );
-      
-      print('✅ Auth/me response: $response');
-      
+
+      Logger.success('Teacher sections response received');
+
       if (response['success'] == true && response['data'] != null) {
-        final userData = response['data'];
-        
-        // Check if assignments are included (for teachers)
-        if (userData['assignments'] != null) {
-          final assignments = userData['assignments'] as List;
-          print('✅ Found ${assignments.length} assignments');
-          return assignments.cast<Map<String, dynamic>>();
-        }
+        final sections = response['data'] as List;
+        Logger.success('Found ${sections.length} assigned sections');
+        return sections.cast<Map<String, dynamic>>();
       }
-      
-      print('⚠️ No assignments found in response');
+
+      Logger.warning('No sections found in response');
       return [];
     } catch (e) {
-      print('❌ Error fetching assignments: $e');
-      return [];
+      Logger.error('Error fetching sections', e);
+      rethrow;  // ✅ Rethrow to show error in UI instead of silently returning empty array
     }
   }
   
@@ -44,26 +40,27 @@ class TeacherService {
   /// GET /api/v1/teacher/sections/:sectionId/students
   Future<List<Map<String, dynamic>>> getStudentsInSection(int sectionId) async {
     try {
-      print('👥 Fetching students for section: $sectionId (teacher endpoint)');
-      
-      // Use teacher-specific endpoint (no admin privileges required)
+      Logger.network('Fetching students for section: $sectionId (teacher endpoint)');
+
+      // ✅ PERFORMANCE: Enable caching - student lists don't change frequently
       final response = await _apiService.get(
         '/teacher/sections/$sectionId/students',
         requiresAuth: true,
+        useCache: true,  // ✅ ENABLE caching for better performance
       );
-      
-      print('✅ Students response: $response');
-      
+
+      Logger.success('Students response received');
+
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'] as List;
-        print('✅ Found ${data.length} students');
+        Logger.success('Found ${data.length} students');
         return data.cast<Map<String, dynamic>>();
       }
-      
-      print('⚠️ No students in response');
+
+      Logger.warning('No students in response');
       return [];
     } catch (e) {
-      print('❌ Error fetching students: $e');
+      Logger.error('Error fetching students', e);
       rethrow; // Rethrow to handle in UI
     }
   }
@@ -72,7 +69,7 @@ class TeacherService {
   /// Uses teacher endpoint and calculates stats from attendance logs
   Future<Map<String, dynamic>> getTodayAttendanceStats(int sectionId) async {
     try {
-      print('📊 Fetching today\'s attendance stats for section: $sectionId');
+      Logger.network('Fetching today\'s attendance stats for section: $sectionId');
 
       // Get today's date in YYYY-MM-DD format
       final today = DateTime.now();
@@ -100,7 +97,7 @@ class TeacherService {
         }
       }
 
-      print('📊 Stats for section $sectionId: P=$presentCount, L=$lateCount, A=$absentCount, LV=$leaveCount');
+      Logger.info('Stats for section $sectionId: P=$presentCount, L=$lateCount, A=$absentCount, LV=$leaveCount');
 
       return {
         'presentCount': presentCount,
@@ -110,7 +107,7 @@ class TeacherService {
         'totalMarked': logs.length,
       };
     } catch (e) {
-      print('❌ Error fetching attendance stats: $e');
+      Logger.error('Error fetching attendance stats', e);
       return {
         'presentCount': 0,
         'lateCount': 0,
@@ -125,23 +122,25 @@ class TeacherService {
   /// GET /api/v1/teacher/sections/:sectionId/attendance?date=YYYY-MM-DD
   Future<List<Map<String, dynamic>>> getAttendanceForSection(int sectionId, String date) async {
     try {
-      print('📅 Fetching attendance for section: $sectionId on $date');
+      Logger.network('Fetching attendance for section: $sectionId on $date');
 
+      // ✅ PERFORMANCE: Enable caching - attendance records are immutable for past dates
       final response = await _apiService.get(
         '/teacher/sections/$sectionId/attendance',
         queryParams: {'date': date},
         requiresAuth: true,
+        useCache: true,  // ✅ ENABLE caching for better performance
       );
 
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'] as List;
-        print('✅ Found ${data.length} attendance logs for $date');
+        Logger.success('Found ${data.length} attendance logs for $date');
         return data.cast<Map<String, dynamic>>();
       }
 
       return [];
     } catch (e) {
-      print('❌ Error fetching attendance for $date: $e');
+      Logger.error('Error fetching attendance for $date', e);
       rethrow;
     }
   }
@@ -157,7 +156,7 @@ class TeacherService {
     String? notes,
   }) async {
     try {
-      print('✏️ Marking attendance: student=$studentId, date=$date, status=$status, time=$checkInTime');
+      Logger.network('Marking attendance: student=$studentId, date=$date, status=$status, time=$checkInTime');
 
       final body = {
         'studentId': studentId,
@@ -180,13 +179,13 @@ class TeacherService {
       );
 
       if (response['success'] == true) {
-        print('✅ Attendance marked successfully');
+        Logger.success('Attendance marked successfully');
         return response['data'] as Map<String, dynamic>;
       }
 
       throw Exception(response['message'] ?? 'Failed to mark attendance');
     } catch (e) {
-      print('❌ Error marking attendance: $e');
+      Logger.error('Error marking attendance', e);
       rethrow;
     }
   }
@@ -196,21 +195,22 @@ class TeacherService {
   /// Returns: totalStudents, boysCount, girlsCount, presentToday, lateToday, absentToday, leaveToday, notMarkedToday, attendancePercentage
   Future<Map<String, dynamic>> getDashboardStats() async {
     try {
-      print('📊 Fetching dashboard statistics');
+      Logger.network('Fetching dashboard statistics');
 
+      // ✅ PERFORMANCE: Enable caching with short TTL - dashboard updates frequently but not every second
       final response = await _apiService.get(
         '/teacher/dashboard/stats',
         requiresAuth: true,
-        useCache: false,  // Don't cache dashboard stats
+        useCache: true,  // ✅ ENABLE caching for better performance (15 min TTL is fine for dashboard)
       );
 
       if (response['success'] == true && response['data'] != null) {
         final stats = response['data'] as Map<String, dynamic>;
-        print('📊 Dashboard stats: $stats');
+        Logger.success('Dashboard stats received');
         return stats;
       }
 
-      print('⚠️ No dashboard stats in response');
+      Logger.warning('No dashboard stats in response');
       return {
         'totalStudents': 0,
         'boysCount': 0,
@@ -223,7 +223,7 @@ class TeacherService {
         'attendancePercentage': 100,
       };
     } catch (e) {
-      print('❌ Error fetching dashboard stats: $e');
+      Logger.error('Error fetching dashboard stats', e);
       return {
         'totalStudents': 0,
         'boysCount': 0,

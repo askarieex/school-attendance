@@ -6,9 +6,9 @@ class ApiConfig {
   // static const String baseUrl = 'http://localhost:3001/api/v1'; // For local development
   static const String baseUrl = 'https://adtenz.site/api/v1'; // For production
   
-  // Timeout settings
-  static const Duration connectTimeout = Duration(seconds: 30);
-  static const Duration receiveTimeout = Duration(seconds: 30);
+  // Timeout settings (increased for slow 2G/3G networks)
+  static const Duration connectTimeout = Duration(seconds: 60);
+  static const Duration receiveTimeout = Duration(seconds: 60);
   
   // Authentication Endpoints
   static const String login = '/auth/login';

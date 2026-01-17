@@ -175,6 +175,123 @@ class School {
       totalDevices: parseInt(devicesResult.rows[0].count),
     };
   }
+
+  /**
+   * Permanently delete school and ALL related data
+   * ⚠️ DANGER: This cannot be undone!
+   */
+  static async permanentDelete(id) {
+    const { getClient } = require('../config/database');
+    const client = await getClient();
+
+    try {
+      await client.query('BEGIN');
+
+      // Get counts before deletion for summary
+      const studentsCount = await client.query(
+        'SELECT COUNT(*) FROM students WHERE school_id = $1',
+        [id]
+      );
+      const attendanceCount = await client.query(
+        'SELECT COUNT(*) FROM attendance_logs WHERE school_id = $1',
+        [id]
+      );
+      const devicesCount = await client.query(
+        'SELECT COUNT(*) FROM devices WHERE school_id = $1',
+        [id]
+      );
+      const usersCount = await client.query(
+        'SELECT COUNT(*) FROM users WHERE school_id = $1',
+        [id]
+      );
+
+      // Get school name for audit
+      const schoolResult = await client.query(
+        'SELECT name FROM schools WHERE id = $1',
+        [id]
+      );
+      const schoolName = schoolResult.rows[0]?.name || 'Unknown';
+
+      // Delete in order respecting constraints (or rely on CASCADE)
+      // Most tables have ON DELETE CASCADE, but explicit is safer
+
+      // Delete attendance logs first
+      await client.query('DELETE FROM attendance_logs WHERE school_id = $1', [id]);
+
+      // Delete device commands
+      await client.query(
+        'DELETE FROM device_commands WHERE device_id IN (SELECT id FROM devices WHERE school_id = $1)',
+        [id]
+      );
+
+      // Delete devices
+      await client.query('DELETE FROM devices WHERE school_id = $1', [id]);
+
+      // Delete leaves
+      await client.query(
+        'DELETE FROM leaves WHERE student_id IN (SELECT id FROM students WHERE school_id = $1)',
+        [id]
+      );
+
+      // Delete students
+      await client.query('DELETE FROM students WHERE school_id = $1', [id]);
+
+      // Delete teacher class assignments
+      await client.query(
+        'DELETE FROM teacher_class_assignments WHERE teacher_id IN (SELECT id FROM teachers WHERE school_id = $1)',
+        [id]
+      );
+
+      // Delete teachers
+      await client.query('DELETE FROM teachers WHERE school_id = $1', [id]);
+
+      // Delete sections (need to clear form_teacher_id first)
+      await client.query(
+        'UPDATE sections SET form_teacher_id = NULL WHERE class_id IN (SELECT id FROM classes WHERE school_id = $1)',
+        [id]
+      );
+      await client.query(
+        'DELETE FROM sections WHERE class_id IN (SELECT id FROM classes WHERE school_id = $1)',
+        [id]
+      );
+
+      // Delete classes
+      await client.query('DELETE FROM classes WHERE school_id = $1', [id]);
+
+      // Delete holidays
+      await client.query('DELETE FROM holidays WHERE school_id = $1', [id]);
+
+      // Delete academic years
+      await client.query('DELETE FROM academic_years WHERE school_id = $1', [id]);
+
+      // Delete school settings
+      await client.query('DELETE FROM school_settings WHERE school_id = $1', [id]);
+
+      // Delete users (school admins/teachers)
+      await client.query('DELETE FROM users WHERE school_id = $1', [id]);
+
+      // Finally, delete the school itself
+      await client.query('DELETE FROM schools WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        schoolName,
+        deletedCounts: {
+          students: parseInt(studentsCount.rows[0].count),
+          attendanceLogs: parseInt(attendanceCount.rows[0].count),
+          devices: parseInt(devicesCount.rows[0].count),
+          users: parseInt(usersCount.rows[0].count),
+        },
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = School;

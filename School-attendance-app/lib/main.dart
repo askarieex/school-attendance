@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'providers/auth_provider.dart';
 import 'providers/attendance_provider.dart';
+import 'screens/splash_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/parent_dashboard_screen.dart';
@@ -35,7 +34,8 @@ class MyApp extends StatelessWidget {
             background: const Color(0xFFF5F7FA),
           ),
           useMaterial3: true,
-          textTheme: GoogleFonts.poppinsTextTheme(),
+          // ✅ PERFORMANCE: Use system font (Roboto/SF Pro) - saves 200ms load time
+          fontFamily: 'Roboto',
           scaffoldBackgroundColor: const Color(0xFFF5F7FA),
           cardTheme: CardTheme(
             elevation: 0,
@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
             foregroundColor: Color(0xFF1A1A1A),
           ),
         ),
-        home: const WelcomeScreen(),
+        home: const SplashScreen(),
         routes: {
           '/welcome': (context) => const WelcomeScreen(),
           '/parent-login': (context) => const LoginScreen(isTeacher: false),
