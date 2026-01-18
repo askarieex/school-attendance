@@ -286,14 +286,26 @@ const CalendarNew = () => {
                     <div className="day-number">{day}</div>
                     {dayHolidays.length > 0 && (
                       <div className="day-holidays">
-                        {dayHolidays.map(holiday => (
-                          <div
-                            key={holiday.id}
-                            className="day-holiday-dot"
-                            style={{ backgroundColor: getTypeInfo(holiday.holiday_type).color }}
-                            title={holiday.holiday_name}
-                          />
-                        ))}
+                        {dayHolidays.slice(0, 2).map(holiday => {
+                          const typeInfo = getTypeInfo(holiday.holiday_type);
+                          return (
+                            <div
+                              key={holiday.id}
+                              className="holiday-chip"
+                              style={{
+                                backgroundColor: `${typeInfo.color}15`,
+                                color: typeInfo.color
+                              }}
+                              title={holiday.holiday_name}
+                            >
+                              <span className="holiday-chip-dot" style={{ backgroundColor: typeInfo.color }}></span>
+                              <span className="holiday-chip-text">{holiday.holiday_name}</span>
+                            </div>
+                          );
+                        })}
+                        {dayHolidays.length > 2 && (
+                          <span className="more-events">+{dayHolidays.length - 2} more</span>
+                        )}
                       </div>
                     )}
                   </div>
