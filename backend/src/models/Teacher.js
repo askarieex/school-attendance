@@ -32,20 +32,16 @@ class Teacher {
 
     const userId = userResult.rows[0].id;
 
-    // Generate unique teacher code
-    const teacherCode = `TCH-${schoolId}-${Date.now().toString(36).toUpperCase()}`;
-
-    // Create teacher profile
+    // Create teacher profile - Let DB trigger handle teacher_code
     const teacherResult = await query(
       `INSERT INTO teachers (
-        user_id, school_id, teacher_code, phone, date_of_birth, date_of_joining,
+        user_id, school_id, phone, date_of_birth, date_of_joining,
         subject_specialization, qualification, address, emergency_contact
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *`,
       [
         userId,
         schoolId,
-        teacherCode,
         phone,
         dateOfBirth,
         dateOfJoining,

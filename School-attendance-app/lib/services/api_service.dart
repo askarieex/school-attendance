@@ -1,54 +1,58 @@
 import 'dart:convert';
-import 'dart:async'; // ✅ BUG FIX: Add for TimeoutException
+import 'dart:async';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import '../config/api_config.dart';
 import '../utils/logger.dart';
 
-/// API Service - Handles all HTTP requests with caching
+/// API Service - Optimized with Persistent Connection for Mobile Data
 class ApiService {
   String? _accessToken;
   String? _refreshToken;
 
-  // ✅ For handling concurrent token refresh requests
+  // ✅ FIX: Use IOClient with custom HttpClient for TRUE connection reuse
+  late final http.Client _client;
+
   bool _isRefreshing = false;
   Future<void>? _refreshFuture;
-
-  // ✅ CRITICAL FIX: Callback to save tokens after refresh
   Function(String accessToken, String refreshToken)? _onTokensRefreshed;
 
-  // ✅ ULTRA PERFORMANCE: Add HTTP cache (15 minute TTL)
-  // Attendance data doesn't change frequently, so longer cache is safe
   final Map<String, _CacheEntry> _cache = {};
   static const _cacheDuration = Duration(minutes: 15);
-
-  // ✅ BUG FIX: Add cache cleanup timer
   Timer? _cacheCleanupTimer;
 
-  // Constructor - ✅ BUG FIX: Start cache cleanup
   ApiService() {
-    // Clean cache every 5 minutes to prevent memory growth
+    // ✅ CRITICAL: Create HttpClient with connection pooling
+    final httpClient = HttpClient()
+      ..idleTimeout = const Duration(seconds: 30)  // Keep connections alive for 30s
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..maxConnectionsPerHost = 5;  // Allow 5 parallel connections
+
+    // Wrap in IOClient for use with http package API
+    _client = IOClient(httpClient);
+
+    // Clean cache every 5 minutes
     _cacheCleanupTimer = Timer.periodic(
       const Duration(minutes: 5),
       (_) => _cleanupExpiredCache(),
     );
+    
+    Logger.info('API Service initialized with persistent connection pool');
   }
 
-  // ✅ BUG FIX: Cleanup expired cache entries
+  // ✅ Cache Invalidation Method
+  void invalidateCache(String endpointPattern) {
+    _cache.removeWhere((key, _) => key.contains(endpointPattern));
+    Logger.performance('Cache invalidated for pattern: $endpointPattern');
+  }
+
   void _cleanupExpiredCache() {
     final now = DateTime.now();
-    final beforeCount = _cache.length;
     _cache.removeWhere((key, entry) => now.isAfter(entry.expiresAt));
-    final afterCount = _cache.length;
-
-    if (beforeCount != afterCount) {
-      Logger.performance('Cache cleanup: Removed ${beforeCount - afterCount} expired entries, $afterCount remaining');
-    }
-
-    // ✅ CRITICAL FIX: Enforce cache size limit
     _enforceCacheSizeLimit();
   }
 
-  // Set tokens after login
   void setTokens(String accessToken, String refreshToken, {Function(String, String)? onRefreshed}) {
     _accessToken = accessToken;
     _refreshToken = refreshToken;
@@ -57,37 +61,32 @@ class ApiService {
     }
   }
 
-  // Clear tokens on logout
   void clearTokens() {
     _accessToken = null;
     _refreshToken = null;
-    _cache.clear(); // Clear cache on logout
+    _cache.clear();
   }
 
-  // Clear cache manually if needed
   void clearCache() {
     _cache.clear();
     Logger.performance('Cache cleared');
   }
-  
-  // Get headers with or without auth token
+
   Map<String, String> _getHeaders({bool requiresAuth = false}) {
     final headers = {
       'Content-Type': 'application/json',
+      'Connection': 'keep-alive',  // ✅ Explicit keep-alive header
     };
-    
     if (requiresAuth && _accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
     }
-    
     return headers;
   }
 
-  /// ✅ Refresh the access token using the refresh token
   Future<void> _performTokenRefresh() async {
     try {
       Logger.network('Refreshing token...');
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.refresh}'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refreshToken': _refreshToken}),
@@ -101,31 +100,23 @@ class ApiService {
         if (newAccessToken != null && newRefreshToken != null) {
           _accessToken = newAccessToken;
           _refreshToken = newRefreshToken;
-
-          // ✅ CRITICAL FIX: Notify auth provider to save new tokens
           if (_onTokensRefreshed != null) {
             _onTokensRefreshed!(newAccessToken, newRefreshToken);
           }
-
-          Logger.success('Token refreshed successfully - both tokens updated');
+          Logger.success('Token refreshed successfully');
         } else {
-          Logger.error('Token refresh response missing tokens');
-          clearTokens();
-          throw UnauthorizedException('Session expired. Please login again.');
+          throw UnauthorizedException('Session expired');
         }
       } else {
-        Logger.error('Token refresh failed with status ${response.statusCode}');
-        clearTokens();
-        throw UnauthorizedException('Session expired. Please login again.');
+        throw UnauthorizedException('Session expired');
       }
     } catch (e) {
       Logger.error('Token refresh error', e);
       clearTokens();
-      throw UnauthorizedException('Session expired. Please login again.');
+      throw UnauthorizedException('Session expired');
     }
   }
 
-  /// ✅ Wrapper for token refresh to handle concurrent requests
   Future<void> _handleTokenRefresh() {
     if (!_isRefreshing) {
       _isRefreshing = true;
@@ -136,9 +127,8 @@ class ApiService {
     }
     return _refreshFuture!;
   }
-  
-  // POST request
-  // ✅ CRITICAL FIX: Use config timeout (60s for slow networks)
+
+  // POST Request
   Future<Map<String, dynamic>> post(
     String endpoint,
     Map<String, dynamic> body, {
@@ -146,15 +136,13 @@ class ApiService {
   }) async {
     try {
       return await _requestWithRetry(
-        () => http.post(
+        () => _client.post(
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
           body: jsonEncode(body),
         ).timeout(
-          ApiConfig.receiveTimeout, // ✅ Use 60s timeout from config
-          onTimeout: () {
-            throw TimeoutException('Request timed out. Please check your network connection.');
-          },
+          ApiConfig.receiveTimeout,
+          onTimeout: () => throw TimeoutException('Request timed out'),
         ),
         requiresAuth: requiresAuth,
       );
@@ -163,8 +151,8 @@ class ApiService {
       throw ApiException('Network error: $e');
     }
   }
-  
-  // GET request with caching
+
+  // GET Request
   Future<Map<String, dynamic>> get(
     String endpoint, {
     Map<String, String>? queryParams,
@@ -184,19 +172,16 @@ class ApiService {
         return entry.data;
       }
       _cache.remove(cacheKey);
-      Logger.performance('Cache EXPIRED: $url');
     }
 
     try {
       final data = await _requestWithRetry(
-        () => http.get(
+        () => _client.get(
           url,
           headers: _getHeaders(requiresAuth: requiresAuth)
         ).timeout(
-          ApiConfig.receiveTimeout, // ✅ Use 60s timeout from config
-          onTimeout: () {
-            throw TimeoutException('Request timed out. Please check your network connection.');
-          },
+          ApiConfig.receiveTimeout,
+          onTimeout: () => throw TimeoutException('Request timed out'),
         ),
         requiresAuth: requiresAuth,
       );
@@ -206,7 +191,6 @@ class ApiService {
           data: data,
           expiresAt: DateTime.now().add(_cacheDuration),
         );
-        Logger.performance('Cached: $url (TTL: ${_cacheDuration.inSeconds}s)');
       }
       return data;
     } catch (e) {
@@ -214,8 +198,8 @@ class ApiService {
       throw ApiException('Network error: $e');
     }
   }
-  
-  // PUT request
+
+  // PUT Request
   Future<Map<String, dynamic>> put(
     String endpoint,
     Map<String, dynamic> body, {
@@ -223,15 +207,13 @@ class ApiService {
   }) async {
     try {
       return await _requestWithRetry(
-        () => http.put(
+        () => _client.put(
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
           body: jsonEncode(body),
         ).timeout(
-          ApiConfig.receiveTimeout, // ✅ Use 60s timeout from config
-          onTimeout: () {
-            throw TimeoutException('Request timed out. Please check your network connection.');
-          },
+          ApiConfig.receiveTimeout,
+          onTimeout: () => throw TimeoutException('Request timed out'),
         ),
         requiresAuth: requiresAuth,
       );
@@ -241,21 +223,19 @@ class ApiService {
     }
   }
 
-  // DELETE request
+  // DELETE Request
   Future<Map<String, dynamic>> delete(
     String endpoint, {
     bool requiresAuth = true,
   }) async {
     try {
       return await _requestWithRetry(
-        () => http.delete(
+        () => _client.delete(
           Uri.parse('${ApiConfig.baseUrl}$endpoint'),
           headers: _getHeaders(requiresAuth: requiresAuth),
         ).timeout(
-          ApiConfig.receiveTimeout, // ✅ Use 60s timeout from config
-          onTimeout: () {
-            throw TimeoutException('Request timed out. Please check your network connection.');
-          },
+          ApiConfig.receiveTimeout,
+          onTimeout: () => throw TimeoutException('Request timed out'),
         ),
         requiresAuth: requiresAuth,
       );
@@ -265,7 +245,6 @@ class ApiService {
     }
   }
 
-  /// ✅ ULTRA RELIABLE: Generic request handler with automatic retry for network failures
   Future<Map<String, dynamic>> _requestWithRetry(
     Future<http.Response> Function() request, {
     required bool requiresAuth,
@@ -273,92 +252,66 @@ class ApiService {
     int networkRetryCount = 0,
   }) async {
     try {
-      final response = await request(); // Timeout is already handled in each method
+      final response = await request();
 
       if (response.statusCode == 401 && requiresAuth && retryCount == 0) {
         Logger.network('Access token expired. Attempting refresh...');
         await _handleTokenRefresh();
-        // Retry the original request with the new token
         return await _requestWithRetry(request, requiresAuth: true, retryCount: 1, networkRetryCount: networkRetryCount);
       }
 
       return _handleResponse(response);
     } on UnauthorizedException {
-      // If refresh token fails, this will be thrown
       rethrow;
     } on TimeoutException catch (e) {
-      // ✅ AUTO-RETRY on timeout (up to 2 times)
       if (networkRetryCount < 2) {
         Logger.warning('Timeout, retrying... (${networkRetryCount + 1}/2)');
-        await Future.delayed(Duration(seconds: networkRetryCount + 1)); // Progressive delay
+        await Future.delayed(Duration(seconds: networkRetryCount + 1));
         return await _requestWithRetry(request, requiresAuth: requiresAuth, retryCount: retryCount, networkRetryCount: networkRetryCount + 1);
       }
-      Logger.error('Request timeout after ${networkRetryCount + 1} attempts', e);
+      Logger.error('Timeout after retries', e);
       throw ApiException('Connection timeout. Please check your internet.');
     } catch (e) {
-      // ✅ AUTO-RETRY on network error (up to 2 times)
       if (networkRetryCount < 2 && e.toString().contains('SocketException')) {
         Logger.warning('Network error, retrying... (${networkRetryCount + 1}/2)');
         await Future.delayed(Duration(seconds: networkRetryCount + 1));
         return await _requestWithRetry(request, requiresAuth: requiresAuth, retryCount: retryCount, networkRetryCount: networkRetryCount + 1);
       }
-      Logger.error('Request failed after ${networkRetryCount + 1} attempts', e);
+      Logger.error('Request failed', e);
       throw ApiException('Network error. Please check your connection.');
     }
   }
-  
-  // Handle API response
+
   Map<String, dynamic> _handleResponse(http.Response response) {
     final body = response.body;
-    
-    if (body.isEmpty) {
-      throw ApiException('Empty response from server');
-    }
+    if (body.isEmpty) throw ApiException('Empty response');
     
     final data = jsonDecode(body) as Map<String, dynamic>;
     
-    // Handle success (2xx status codes)
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    }
+    if (response.statusCode >= 200 && response.statusCode < 300) return data;
     
-    // Handle errors
-    final message = data['message'] ?? 'Unknown error occurred';
-    
-    if (response.statusCode == 401) {
-      throw UnauthorizedException(message);
-    } else if (response.statusCode == 404) {
-      throw NotFoundException(message);
-    } else if (response.statusCode == 400) {
-      throw ValidationException(message);
-    } else {
-      throw ApiException('Error ${response.statusCode}: $message');
-    }
+    final message = data['message'] ?? 'Unknown error';
+    if (response.statusCode == 401) throw UnauthorizedException(message);
+    if (response.statusCode == 404) throw NotFoundException(message);
+    if (response.statusCode == 400) throw ValidationException(message);
+    throw ApiException('Error ${response.statusCode}: $message');
   }
 
-  // ✅ BUG FIX: Dispose method to cleanup resources
   void dispose() {
     _cacheCleanupTimer?.cancel();
     _cache.clear();
-    clearTokens();
+    _client.close();
     Logger.info('API Service disposed');
   }
-  
-  // ✅ CRITICAL FIX: Limit cache size to prevent memory bloat
-  void _enforceCacheSizeLimit() {
-    const int maxCacheSize = 100;
 
-    if (_cache.length > maxCacheSize) {
-      // Sort by expiration time and remove oldest entries
+  void _enforceCacheSizeLimit() {
+    if (_cache.length > 100) {
       final sortedEntries = _cache.entries.toList()
         ..sort((a, b) => a.value.expiresAt.compareTo(b.value.expiresAt));
-
-      final toRemove = _cache.length - maxCacheSize;
+      final toRemove = _cache.length - 100;
       for (int i = 0; i < toRemove; i++) {
         _cache.remove(sortedEntries[i].key);
       }
-
-      Logger.performance('Cache size limit enforced: removed $toRemove entries, ${_cache.length} remaining');
     }
   }
 }
@@ -367,7 +320,6 @@ class ApiService {
 class ApiException implements Exception {
   final String message;
   ApiException(this.message);
-  
   @override
   String toString() => message;
 }
@@ -384,13 +336,8 @@ class ValidationException extends ApiException {
   ValidationException(String message) : super(message);
 }
 
-// ✅ Cache entry with expiration
 class _CacheEntry {
   final Map<String, dynamic> data;
   final DateTime expiresAt;
-
-  _CacheEntry({
-    required this.data,
-    required this.expiresAt,
-  });
+  _CacheEntry({required this.data, required this.expiresAt});
 }

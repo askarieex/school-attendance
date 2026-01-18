@@ -46,11 +46,18 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
       }
 
       final sectionId = widget.classData['section_id'];
-      final students = await _teacherService.getStudentsInSection(sectionId);
-      final attendance = await _teacherService.getAttendanceForSection(
-        sectionId,
-        DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      );
+      
+      // ✅ PERFORMANCE FIX: Load students and attendance IN PARALLEL
+      final results = await Future.wait([
+        _teacherService.getStudentsInSection(sectionId),
+        _teacherService.getAttendanceForSection(
+          sectionId,
+          DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        ),
+      ]);
+      
+      final students = results[0] as List<Map<String, dynamic>>;
+      final attendance = results[1] as List<Map<String, dynamic>>;
 
       setState(() {
         _students = students.map((student) {
