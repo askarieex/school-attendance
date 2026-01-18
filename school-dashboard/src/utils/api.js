@@ -240,7 +240,7 @@ export const holidaysAPI = {
   create: (data) => api.post('/school/holidays', data),
   update: (id, data) => api.put(`/school/holidays/${id}`, data),
   delete: (id) => api.delete(`/school/holidays/${id}`),
-  bulkImport: (holidays) => api.post('/school/holidays/bulk', { holidays }),
+  bulkImport: (holidays) => api.post('/school/holidays/bulk-import', { holidays }),
 };
 
 // Leaves APIs
