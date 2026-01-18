@@ -26,9 +26,11 @@ const CalendarNew = () => {
   const [formData, setFormData] = useState({
     holidayName: '',
     holidayDate: '',
+    endDate: '', // For date range
     holidayType: 'national',
     description: '',
-    isRecurring: false // New field for recurring holidays
+    isRecurring: false,
+    isDateRange: false // Toggle for single day vs date range
   });
 
   const holidayTypes = [
@@ -115,6 +117,24 @@ const CalendarNew = () => {
     try {
       if (editingHoliday) {
         await holidaysAPI.update(editingHoliday.id, formData);
+      } else if (formData.isDateRange && formData.endDate) {
+        // Bulk create for date range
+        const startDate = new Date(formData.holidayDate);
+        const endDate = new Date(formData.endDate);
+        const holidays = [];
+
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          holidays.push({
+            holidayName: formData.holidayName,
+            holidayDate: d.toISOString().split('T')[0],
+            holidayType: formData.holidayType,
+            description: formData.description,
+            isRecurring: formData.isRecurring
+          });
+        }
+
+        // Use bulk import API
+        await holidaysAPI.bulkImport(holidays);
       } else {
         await holidaysAPI.create(formData);
       }
@@ -155,9 +175,11 @@ const CalendarNew = () => {
     setFormData({
       holidayName: '',
       holidayDate: '',
+      endDate: '',
       holidayType: 'national',
       description: '',
-      isRecurring: false
+      isRecurring: false,
+      isDateRange: false
     });
   };
 
@@ -384,8 +406,24 @@ const CalendarNew = () => {
                 />
               </div>
 
+              {/* Date Range Toggle - only for new holidays */}
+              {!editingHoliday && (
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input
+                    type="checkbox"
+                    id="isDateRange"
+                    checked={formData.isDateRange}
+                    onChange={(e) => setFormData({ ...formData, isDateRange: e.target.checked, endDate: '' })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="isDateRange" style={{ cursor: 'pointer', fontWeight: '500' }}>
+                    📅 Date Range (for vacations like Winter/Summer Break)
+                  </label>
+                </div>
+              )}
+
               <div className="form-group">
-                <label>Date *</label>
+                <label>{formData.isDateRange ? 'Start Date *' : 'Date *'}</label>
                 <input
                   type="date"
                   className="input-new"
@@ -394,6 +432,21 @@ const CalendarNew = () => {
                   required
                 />
               </div>
+
+              {/* End Date - only shown when Date Range is enabled */}
+              {formData.isDateRange && (
+                <div className="form-group">
+                  <label>End Date *</label>
+                  <input
+                    type="date"
+                    className="input-new"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    required
+                    min={formData.holidayDate}
+                  />
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Holiday Type *</label>
