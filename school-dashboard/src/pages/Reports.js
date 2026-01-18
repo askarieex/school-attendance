@@ -805,6 +805,193 @@ const Reports = () => {
     </div>
   );
 
+  /* --- CLASS REPORT --- */
+  const renderClassReport = () => {
+    if (!reportData) return null;
+    const { classInfo, attendanceStats, students } = reportData;
+
+    // Use safe defaults if data is missing
+    const stats = attendanceStats || {};
+    const studentList = students || [];
+
+    // Prepare data for Chart
+    const chartData = [
+      { name: 'Present', value: parseInt(stats.present || 0), fill: '#10B981' },
+      { name: 'Absent', value: parseInt(stats.absent || 0), fill: '#EF4444' },
+      { name: 'Late', value: parseInt(stats.late || 0), fill: '#F59E0B' },
+      { name: 'Leave', value: parseInt(stats.onLeave || 0), fill: '#6366F1' },
+    ];
+
+    return (
+      <div className="report-content">
+        {/* Header Stats */}
+        <div className="stats-grid">
+          <StatCard
+            title="Total Students"
+            value={classInfo?.totalStudents || studentList.length || 0}
+            icon={<FaUsers />}
+            color="blue"
+          />
+          <StatCard
+            title="Attendance Rate"
+            value={`${stats.attendanceRate || 0}%`}
+            icon={<FaChartLine />}
+            color="green"
+          />
+          <StatCard
+            title="Usually Late"
+            value={stats.late || 0}
+            icon={<FaClock />}
+            color="orange"
+          />
+          <StatCard
+            title="Chronic Absent"
+            value={stats.absent || 0}
+            icon={<FaUserTimes />}
+            color="red"
+          />
+        </div>
+
+        <div className="charts-row three-cols">
+          {/* Chart */}
+          <div className="chart-card">
+            <h3>Attendance Distribution</h3>
+            <div className="chart-container">
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Student List */}
+          <div className="chart-card col-span-2">
+            <h3>Student Performance ({studentList.length})</h3>
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Roll No</th>
+                    <th>Name</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Late</th>
+                    <th>Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentList.map((student, idx) => (
+                    <tr key={idx}>
+                      <td>{student.rollNumber}</td>
+                      <td className="font-medium">{student.name}</td>
+                      <td className="text-green">{student.present || 0}</td>
+                      <td className="text-red">{student.absent || 0}</td>
+                      <td className="text-orange">{student.late || 0}</td>
+                      <td>
+                        <span className={`status-badge ${(student.attendanceRate || 0) >= 75 ? 'success' : 'danger'}`}>
+                          {student.attendanceRate || 0}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {studentList.length === 0 && (
+                    <tr>
+                      <td colSpan="6" className="text-center">No student data available for this range.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* --- WEEKLY SUMMARY REPORT --- */
+  const renderWeeklySummary = () => {
+    if (!reportData) return null;
+    const { weeklyStats, classData } = reportData;
+
+    // weeklyStats should be array of { date, present, absent, late }
+    // classData should be array of { className, attendanceRate }
+
+    return (
+      <div className="report-content">
+        {/* Weekly Trend Chart */}
+        <div className="chart-card full-width">
+          <h3>Weekly Attendance Trend</h3>
+          <div className="chart-container">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={weeklyStats || []}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} />
+                <YAxis axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Legend />
+                <Bar dataKey="present" name="Present" fill="#10B981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="late" name="Late" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="absent" name="Absent" fill="#EF4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Class Performance Table */}
+        <div className="chart-card">
+          <h3>Class Performance This Week</h3>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Class</th>
+                  <th>Attendance Rate</th>
+                  <th>Performance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(classData || []).map((cls, idx) => (
+                  <tr key={idx}>
+                    <td className="font-medium">{cls.className}</td>
+                    <td>{cls.attendanceRate}%</td>
+                    <td style={{ width: '40%' }}>
+                      <div className="mini-progress-bar">
+                        <div
+                          className={`progress-fill ${cls.attendanceRate >= 80 ? 'good' : cls.attendanceRate >= 60 ? 'average' : 'poor'}`}
+                          style={{ width: `${cls.attendanceRate}%` }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(!classData || classData.length === 0) && (
+                  <tr><td colSpan="3" className="text-center">No class data available.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Main Render Switch
   const renderReportContent = () => {
     switch (reportType) {
