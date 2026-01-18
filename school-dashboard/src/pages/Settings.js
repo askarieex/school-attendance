@@ -524,12 +524,13 @@ const Settings = () => {
                     <div className="logo-preview-container">
                       {schoolProfile.logoUrl ? (
                         <img
-                          src={`${process.env.REACT_APP_API_URL.replace(/\/api\/v1\/?$/, '')}${schoolProfile.logoUrl.startsWith('/') ? '' : '/'}${schoolProfile.logoUrl}`}
+                          src={`${process.env.REACT_APP_API_URL.replace(/\/api\/v1\/?$/, '')}${schoolProfile.logoUrl.startsWith('/') ? '' : '/'}${schoolProfile.logoUrl}?v=${new Date().getTime()}`}
                           alt="School Logo"
                           className="logo-img-preview"
+                          key={schoolProfile.logoUrl} /* Force re-render on url change */
                           onError={(e) => {
                             console.error('Image load failed:', e.target.src);
-                            e.target.onerror = null;
+                            // Only hide if it really fails after retries
                             e.target.style.display = 'none';
                             e.target.nextSibling.style.display = 'flex';
                           }}
