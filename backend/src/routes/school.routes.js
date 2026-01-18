@@ -116,6 +116,21 @@ router.get('/reports/low-attendance', reportsController.getLowAttendance);
 // GET /api/v1/school/reports/perfect-attendance
 router.get('/reports/perfect-attendance', reportsController.getPerfectAttendance);
 
+// GET /api/v1/school/reports/perfect-attendance
+router.get('/reports/perfect-attendance', reportsController.getPerfectAttendance);
+
+// GET /api/v1/school/reports/day-pattern
+router.get('/reports/day-pattern', reportsController.getDayPatternAnalysis);
+
+// GET /api/v1/school/reports/teacher-performance
+router.get('/reports/teacher-performance', reportsController.getTeacherPerformance);
+
+// GET /api/v1/school/reports/late-analysis
+router.get('/reports/late-analysis', reportsController.getLateArrivalsAnalysis);
+
+// GET /api/v1/school/reports/sms-analytics
+router.get('/reports/sms-analytics', reportsController.getSmsAnalytics);
+
 // GET /api/v1/school/reports/export/:type
 router.get('/reports/export/:type', reportsController.exportReport);
 

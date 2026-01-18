@@ -277,6 +277,10 @@ export const reportsAPI = {
   getWeeklySummary: (params) => api.get('/school/reports/weekly', { params }),
   getLowAttendance: (params) => api.get('/school/reports/low-attendance', { params }),
   getPerfectAttendance: (params) => api.get('/school/reports/perfect-attendance', { params }),
+  getDayPatternAnalysis: (params) => api.get('/school/reports/day-pattern', { params }),
+  getTeacherPerformance: (params) => api.get('/school/reports/teacher-performance', { params }),
+  getLateArrivalsAnalysis: (params) => api.get('/school/reports/late-analysis', { params }),
+  getSmsAnalytics: (params) => api.get('/school/reports/sms-analytics', { params }),
   exportReport: (type, params) => api.get(`/school/reports/export/${type}`, { params, responseType: 'blob' }),
 };
 
