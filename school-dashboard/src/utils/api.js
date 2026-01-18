@@ -190,6 +190,9 @@ export const statsAPI = {
 export const settingsAPI = {
   get: () => api.get('/school/settings'),
   update: (data) => api.put('/school/settings', data),
+  uploadLogo: (formData) => api.post('/school/settings/logo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
 // Classes APIs

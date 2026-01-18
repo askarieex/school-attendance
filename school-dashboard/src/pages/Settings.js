@@ -34,45 +34,11 @@ const Settings = () => {
     pincode: '',
     phone: '',
     email: '',
-    website: ''
+    website: '',
+    logoUrl: ''
   });
 
-  // School Timings
-  const [schoolTimings, setSchoolTimings] = useState({
-    schoolOpenTime: '08:00',
-    schoolCloseTime: '14:00',
-    lateThresholdMinutes: 15,
-    workingDays: 'Mon-Sat',
-    weeklyHoliday: 'Sunday'
-  });
-
-  // Academic Year
-  const [academicYears, setAcademicYears] = useState([]);
-  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
-  const [showYearModal, setShowYearModal] = useState(false);
-  const [yearFormData, setYearFormData] = useState({
-    yearName: '',
-    startDate: '',
-    endDate: '',
-    workingDays: 'Mon-Sat',
-    weeklyHoliday: 'Sunday'
-  });
-
-  // SMS Settings
-  const [smsSettings, setSmsSettings] = useState({
-    smsEnabled: false,
-    smsProvider: 'twilio',
-    smsApiKey: '',
-    smsBalance: 0,
-    sendOnAbsent: true,
-    sendOnLate: true,
-    sendDailySummary: false
-  });
-
-  useEffect(() => {
-    fetchSettings();
-    fetchAcademicYears();
-  }, []);
+  // ... (lines 40-76) ...
 
   const fetchSettings = async () => {
     try {
@@ -91,28 +57,11 @@ const Settings = () => {
           pincode: settings.pincode || '',
           phone: settings.phone || '',
           email: settings.email || '',
-          website: settings.website || ''
+          website: settings.website || '',
+          logoUrl: settings.logo_url || ''
         });
 
-        // Parse school timings
-        setSchoolTimings({
-          schoolOpenTime: settings.school_open_time || '08:00',
-          schoolCloseTime: settings.school_close_time || '14:00',
-          lateThresholdMinutes: settings.late_threshold_minutes || 15,
-          workingDays: settings.working_days || 'Mon-Sat',
-          weeklyHoliday: settings.weekly_holiday || 'Sunday'
-        });
-
-        // Parse SMS settings
-        setSmsSettings({
-          smsEnabled: settings.sms_enabled || false,
-          smsProvider: settings.sms_provider || 'twilio',
-          smsApiKey: settings.sms_api_key || '',
-          smsBalance: settings.sms_balance || 0,
-          sendOnAbsent: settings.send_on_absent ?? true,
-          sendOnLate: settings.send_on_late ?? true,
-          sendDailySummary: settings.send_daily_summary ?? false
-        });
+        // ... (lines 98-115) ...
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -122,16 +71,45 @@ const Settings = () => {
     }
   };
 
-  const fetchAcademicYears = async () => {
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      setError('Invalid file type. Please upload a JPG or PNG image.');
+      return;
+    }
+
+    // Validate file size (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Image size too large. Maximum size is 2MB.');
+      return;
+    }
+
     try {
-      const response = await academicYearAPI.getAll();
+      setSaving(true);
+      setError('');
+
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const response = await settingsAPI.uploadLogo(formData);
+
       if (response.success) {
-        setAcademicYears(response.data || []);
-        const current = response.data.find(y => y.is_current);
-        setCurrentAcademicYear(current);
+        setSchoolProfile(prev => ({ ...prev, logoUrl: response.data.logoUrl }));
+        setSuccessMessage('School logo uploaded successfully! ✅');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        setError('Failed to upload logo');
       }
     } catch (err) {
-      console.error('Error fetching academic years:', err);
+      console.error('Error uploading logo:', err);
+      setError('An error occurred while uploading logo');
+    } finally {
+      setSaving(false);
+      // Reset input
+      e.target.value = null;
     }
   };
 
@@ -150,7 +128,8 @@ const Settings = () => {
         pincode: schoolProfile.pincode,
         phone: schoolProfile.phone,
         email: schoolProfile.email,
-        website: schoolProfile.website
+        website: schoolProfile.website,
+        logo_url: schoolProfile.logoUrl
       };
 
       const response = await settingsAPI.update(data);
@@ -463,6 +442,41 @@ const Settings = () => {
             {/* School Profile Tab */}
             {activeTab === 'profile' && (
               <form onSubmit={handleSaveProfile}>
+
+                {/* School Logo Section */}
+                <div className="settings-section">
+                  <h3 className="section-title">School Logo</h3>
+                  <div className="logo-upload-wrapper">
+                    <div className="logo-preview">
+                      {schoolProfile.logoUrl ? (
+                        <div
+                          className="logo-image"
+                          style={{ backgroundImage: `url(${process.env.REACT_APP_API_URL}${schoolProfile.logoUrl})` }}
+                        ></div>
+                      ) : (
+                        <div className="logo-placeholder">
+                          <FiHome size={32} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="logo-upload-info">
+                      <label className="btn btn-secondary btn-sm">
+                        Change Logo
+                        <input
+                          type="file"
+                          accept="image/png, image/jpeg"
+                          onChange={handleLogoUpload}
+                          hidden
+                        />
+                      </label>
+                      <p className="text-muted">
+                        Recommended size: 200x200px. Max size: 2MB.<br />
+                        Formats: JPG, PNG
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="settings-section">
                   <h3 className="section-title">School Information</h3>
                   <div className="form-grid">

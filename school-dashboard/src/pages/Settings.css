@@ -521,6 +521,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -531,6 +532,7 @@
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -596,5 +598,76 @@
   .section-header .btn {
     width: 100%;
     justify-content: center;
+  }
+
+}
+
+/* Logo Upload Styles */
+.logo-upload-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 1rem;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-color);
+  margin-bottom: 2rem;
+}
+
+.logo-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  border: 4px solid white;
+  box-shadow: var(--shadow-md);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-image {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+
+.logo-placeholder {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-upload-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.logo-upload-info label.btn {
+  width: fit-content;
+  margin: 0;
+}
+
+.logo-upload-info .text-muted {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--gray-500);
+}
+
+@media (max-width: 640px) {
+  .logo-upload-wrapper {
+    flex-direction: column;
+    text-align: center;
+    gap: 1.5rem;
+  }
+
+  .logo-upload-info {
+    align-items: center;
   }
 }

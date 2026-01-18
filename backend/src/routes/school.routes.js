@@ -16,6 +16,7 @@ const {
   validateId
 } = require('../middleware/validation');
 const { uploadStudentPhoto, processPhoto } = require('../middleware/upload');
+const { uploadLogo, processLogo } = require('../middleware/uploadLogo');
 
 /**
  * School Admin Routes
@@ -142,6 +143,9 @@ router.get('/settings', schoolController.getSettings);
 
 // PUT /api/v1/school/settings
 router.put('/settings', schoolController.updateSettings);
+
+// POST /api/v1/school/settings/logo - Upload school logo
+router.post('/settings/logo', uploadLogo, processLogo, schoolController.uploadSchoolLogo);
 
 /**
  * DEVICES

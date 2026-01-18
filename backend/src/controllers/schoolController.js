@@ -949,6 +949,27 @@ const updateSettings = async (req, res) => {
   }
 };
 
+// Upload school logo
+const uploadSchoolLogo = async (req, res) => {
+  try {
+    const schoolId = req.tenantSchoolId;
+
+    if (!req.file) {
+      return sendError(res, 'No logo file provided', 400);
+    }
+
+    const logoUrl = req.file.url;
+    console.log(`🖼️ Updating school logo for school ${schoolId} to ${logoUrl}`);
+
+    const settings = await SchoolSettings.update(schoolId, { logo_url: logoUrl });
+
+    sendSuccess(res, { logoUrl, settings }, 'School logo uploaded successfully');
+  } catch (error) {
+    console.error('Upload logo error:', error);
+    sendError(res, 'Failed to upload logo', 500);
+  }
+};
+
 // Get school devices
 const getSchoolDevices = async (req, res) => {
   try {
@@ -1310,6 +1331,9 @@ module.exports = {
   // Settings
   getSettings,
   updateSettings,
+  uploadSchoolLogo,
+
+  // Devices
   getSchoolDevices,
 
   // Device Enrollment
