@@ -83,8 +83,8 @@ const createStudent = async (req, res) => {
 
       if (duplicateCheck.rows.length > 0) {
         return sendError(
-          res, 
-          `Roll number ${studentData.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`, 
+          res,
+          `Roll number ${studentData.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`,
           409
         );
       }
@@ -186,8 +186,8 @@ const updateStudent = async (req, res) => {
 
       if (duplicateCheck.rows.length > 0) {
         return sendError(
-          res, 
-          `Roll number ${updates.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`, 
+          res,
+          `Roll number ${updates.rollNumber} is already assigned to ${duplicateCheck.rows[0].full_name} in this class/section`,
           409
         );
       }
@@ -412,9 +412,67 @@ const getDashboardToday = async (req, res) => {
     // ✅ Get current academic year for filtering
     const currentAcademicYear = await getCurrentAcademicYear(schoolId);
 
-    const stats = await AttendanceLog.getTodayStats(schoolId, currentAcademicYear);
+    // Get dates
+    const today = getCurrentDateIST();
+    // Calculate start date (last 6 days + today = 7 days)
+    const endObj = new Date(today);
+    const startObj = new Date(endObj);
+    startObj.setDate(endObj.getDate() - 6);
+    const startDate = startObj.toISOString().split('T')[0];
 
-    sendSuccess(res, stats, 'Dashboard statistics retrieved successfully');
+    // Parallel fetch for performance
+    const [stats, classStats, weeklyRaw] = await Promise.all([
+      AttendanceLog.getTodayStats(schoolId, currentAcademicYear),
+      AttendanceLog.getClassStatsToday(schoolId, today),
+      AttendanceLog.getAnalytics(schoolId, startDate, today)
+    ]);
+
+    // Process weekly data for chart
+    // Map dates to days (Mon, Tue...) and aggregate counts
+    const weeklyDataMap = new Map();
+
+    // Initialize last 7 days with 0
+    for (let d = new Date(startObj); d <= endObj; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      const dayLabel = d.toLocaleDateString('en-IN', { weekday: 'short' });
+      weeklyDataMap.set(dStr, { day: dayLabel, present: 0, absent: 0, late: 0, date: dStr });
+    }
+
+    // Fill with actual data
+    weeklyRaw.forEach(row => {
+      const dateStr = new Date(row.date).toISOString().split('T')[0];
+      if (weeklyDataMap.has(dateStr)) {
+        const dayStat = weeklyDataMap.get(dateStr);
+        const count = parseInt(row.count);
+        if (row.status === 'present') dayStat.present += count;
+        else if (row.status === 'late') dayStat.late += count;
+        else if (row.status === 'absent') dayStat.absent += count;
+      }
+    });
+
+    // Convert map to array and calculate percentages (approximate based on total students today)
+    // Note: Historical total students might differ, but using today's total is a reasonable approximation for recent trends
+    const totalStudents = stats.totalStudents || 1;
+
+    const weeklyData = Array.from(weeklyDataMap.values()).map(d => {
+      const dailyTotal = d.present + d.late + d.absent;
+      // If dailyTotal is 0 (no data), use stats.totalStudents to prevent division by zero visual bugs, 
+      // but counts remain 0.
+      const base = dailyTotal > 0 ? dailyTotal : totalStudents;
+
+      return {
+        ...d,
+        presentPct: Math.round(((d.present + d.late) / base) * 100), // Late is technically present
+        absentPct: Math.round((d.absent / base) * 100),
+        latePct: Math.round((d.late / base) * 100)
+      };
+    });
+
+    sendSuccess(res, {
+      ...stats,
+      classStats: classStats, // Real class stats
+      weeklyStats: weeklyData // Real weekly stats
+    }, 'Dashboard statistics retrieved successfully');
   } catch (error) {
     console.error('Get dashboard error:', error);
     sendError(res, 'Failed to retrieve dashboard statistics', 500);
@@ -845,40 +903,40 @@ const updateSettings = async (req, res) => {
     if (updates.school_open_time) {
       const timeStr = updates.school_open_time;
       const [hours] = timeStr.split(':').map(Number);
-      
+
       // School should start in morning (before 12 PM)
       if (hours >= 12) {
         return sendError(res, 'School start time must be in the morning (before 12:00 PM). Did you mean 09:00 instead of 21:00?', 400);
       }
-      
+
       // School should start after 6 AM (reasonable)
       if (hours < 6) {
         return sendError(res, 'School start time should be after 6:00 AM', 400);
       }
-      
+
       console.log(`✅ School start time validated: ${timeStr} (${hours}:00 AM)`);
     }
-    
+
     // VALIDATION: Late threshold should be reasonable
     if (updates.late_threshold_minutes !== undefined) {
       const threshold = parseInt(updates.late_threshold_minutes);
-      
+
       if (threshold < 0 || threshold > 60) {
         return sendError(res, 'Late threshold must be between 0 and 60 minutes', 400);
       }
-      
+
       console.log(`✅ Late threshold validated: ${threshold} minutes`);
     }
-    
+
     // VALIDATION: School close time should be in afternoon/evening
     if (updates.school_close_time) {
       const timeStr = updates.school_close_time;
       const [hours] = timeStr.split(':').map(Number);
-      
+
       if (hours < 12) {
         return sendError(res, 'School close time should be in afternoon/evening (after 12:00 PM)', 400);
       }
-      
+
       console.log(`✅ School close time validated: ${timeStr}`);
     }
 

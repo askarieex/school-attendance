@@ -101,6 +101,44 @@ class AttendanceLog {
   }
 
   /**
+   * Get class-wise stats for today (or specific date)
+   */
+  static async getClassStatsToday(schoolId, date) {
+    const result = await query(
+      `SELECT
+        c.id as class_id,
+        c.class_name,
+        COUNT(DISTINCT s.id) as total_students,
+        COUNT(DISTINCT CASE
+          WHEN al.status IN ('present', 'late') THEN al.id
+          ELSE NULL
+        END) as present_count
+       FROM classes c
+       LEFT JOIN students s ON c.id = s.class_id AND s.school_id = $1 AND s.is_active = TRUE
+       LEFT JOIN attendance_logs al ON s.id = al.student_id
+         AND al.school_id = $1
+         AND al.date = $2
+       WHERE c.school_id = $1 AND c.is_active = TRUE
+       GROUP BY c.id, c.class_name
+       ORDER BY c.class_name`,
+      [schoolId, date]
+    );
+
+    return result.rows.map(row => {
+      const total = parseInt(row.total_students);
+      const present = parseInt(row.present_count);
+      return {
+        classId: row.class_id,
+        className: row.class_name,
+        totalStudents: total,
+        present: present,
+        absent: total - present,
+        attendancePercentage: total > 0 ? Math.round((present / total) * 100) : 0
+      };
+    });
+  }
+
+  /**
    * Get all attendance logs with pagination and filters
    */
   static async findAll(schoolId, page = 1, limit = 20, filters = {}) {

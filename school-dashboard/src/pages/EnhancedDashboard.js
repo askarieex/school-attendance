@@ -46,39 +46,51 @@ const EnhancedDashboard = () => {
         const data = statsResponse.data;
         // Calculate attendance rate: Late students ARE present!
         const attendanceRate = data.totalStudents > 0
-          ? Math.round(((data.presentToday + data.lateToday) / data.totalStudents) * 100)
+          ? Math.round(((parseInt(data.presentToday) + parseInt(data.lateToday)) / data.totalStudents) * 100)
           : 0;
 
         setStats({
-          ...data,
+          totalStudents: data.totalStudents,
+          presentToday: parseInt(data.presentToday),
+          absentToday: parseInt(data.absentToday),
+          lateToday: parseInt(data.lateToday),
           attendanceRate
         });
-      }
 
-      // Fetch class-wise stats
-      const classesResponse = await classesAPI.getAll({ include: 'sections' });
-      if (classesResponse.success) {
-        const classesData = classesResponse.data.classes || [];
-        // Mock class-wise attendance data (in real app, fetch from backend)
-        const classStatsData = classesData.slice(0, 5).map((cls) => ({
-          className: cls.class_name,
-          totalStudents: cls.total_students || 0,
-          present: Math.floor((cls.total_students || 0) * (0.85 + Math.random() * 0.15)),
-          absent: 0,
-          attendancePercentage: 0
-        }));
+        // Use REAL class stats from backend if available
+        if (data.classStats) {
+          setClassStats(data.classStats);
+          generateTopPerformers(data.classStats);
+        } else {
+          // Fallback to fetching classes if backend doesn't provide stats (backward compat)
+          const classesResponse = await classesAPI.getAll({ include: 'sections' });
+          if (classesResponse.success) {
+            const classesData = classesResponse.data.classes || [];
+            const classStatsData = classesData.map((cls) => ({
+              className: cls.class_name,
+              totalStudents: cls.total_students || 0,
+              present: 0,
+              absent: cls.total_students || 0,
+              attendancePercentage: 0
+            }));
+            setClassStats(classStatsData);
+          }
+        }
 
-        classStatsData.forEach(cls => {
-          cls.absent = cls.totalStudents - cls.present;
-          cls.attendancePercentage = cls.totalStudents > 0
-            ? Math.round((cls.present / cls.totalStudents) * 100)
-            : 0;
-        });
-
-        setClassStats(classStatsData);
-        
-        // Generate top performers from classStatsData
-        generateTopPerformers(classStatsData);
+        // Use REAL weekly data from backend
+        if (data.weeklyStats) {
+          // Transform for chart if needed, but backend format should be compatible
+          const chartData = data.weeklyStats.map(d => ({
+            day: d.day,
+            present: d.presentPct, // Use calculated percentages for the stacked bar
+            late: d.latePct,
+            absent: d.absentPct,
+            rawPresent: d.present,
+            rawLate: d.late,
+            rawAbsent: d.absent
+          }));
+          setWeeklyData(chartData);
+        }
       }
 
       // Fetch recent attendance activity
@@ -89,12 +101,15 @@ const EnhancedDashboard = () => {
       }
 
       // Generate alerts
-      generateAlerts(statsResponse.data);
+      if (statsResponse.data) {
+        generateAlerts({
+          ...statsResponse.data,
+          absentToday: parseInt(statsResponse.data.absentToday),
+          lateToday: parseInt(statsResponse.data.lateToday)
+        });
+      }
 
-      // Generate weekly data for chart
-      generateWeeklyData();
-      
-      // Generate monthly trend
+      // Generate monthly trend (This one can stay mock or be fetched if we add an endpoint)
       generateMonthlyTrend();
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -102,6 +117,8 @@ const EnhancedDashboard = () => {
       setLoading(false);
     }
   }, []);
+
+
 
   // ⚡ PERFORMANCE: Only refresh live activity feed, NOT all stats
   // This reduces load by 70% - activity feed updates frequently, stats don't change often
@@ -173,16 +190,7 @@ const EnhancedDashboard = () => {
     });
   };
 
-  const generateWeeklyData = () => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const data = days.map(day => ({
-      day,
-      present: Math.floor(Math.random() * 30) + 70,
-      absent: Math.floor(Math.random() * 15) + 5,
-      late: Math.floor(Math.random() * 10) + 3
-    }));
-    setWeeklyData(data);
-  };
+
 
   const generateMonthlyTrend = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -364,22 +372,22 @@ const EnhancedDashboard = () => {
             {weeklyData.map((day, index) => (
               <div key={index} className="day-column">
                 <div className="bars-container">
-                  <div 
-                    className="bar bar-present" 
+                  <div
+                    className="bar bar-present"
                     style={{ height: `${day.present}%` }}
                     title={`Present: ${day.present}%`}
                   >
                     <span className="bar-label">{day.present}</span>
                   </div>
-                  <div 
-                    className="bar bar-late" 
+                  <div
+                    className="bar bar-late"
                     style={{ height: `${day.late}%` }}
                     title={`Late: ${day.late}%`}
                   >
                     <span className="bar-label">{day.late}</span>
                   </div>
-                  <div 
-                    className="bar bar-absent" 
+                  <div
+                    className="bar bar-absent"
                     style={{ height: `${day.absent}%` }}
                     title={`Absent: ${day.absent}%`}
                   >
@@ -421,7 +429,7 @@ const EnhancedDashboard = () => {
             {monthlyTrend.map((month, index) => (
               <div key={index} className="trend-bar-wrapper">
                 <div className="trend-bar-bg">
-                  <div 
+                  <div
                     className="trend-bar-fill"
                     style={{ width: `${month.rate}%` }}
                   >
