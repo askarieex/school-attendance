@@ -30,8 +30,13 @@ const DatabaseExplorer = () => {
     const fetchTables = async () => {
         try {
             setLoading(true);
-            const data = await databaseAPI.getTables();
-            setTables(data);
+            const response = await databaseAPI.getTables();
+            if (response.success && Array.isArray(response.data)) {
+                setTables(response.data);
+            } else {
+                setTables([]);
+                console.error('Unexpected response format:', response);
+            }
             setLoading(false);
         } catch (err) {
             console.error(err);
@@ -45,8 +50,10 @@ const DatabaseExplorer = () => {
             setLoading(true);
             setError(null);
             const response = await databaseAPI.getTableData(tableName, { page: pageNum, limit });
-            setTableData(response.data);
-            setTotal(response.total);
+            if (response.success) {
+                setTableData(response.data);
+                setTotal(response.pagination?.total || 0);
+            }
             setLoading(false);
         } catch (err) {
             console.error(err);

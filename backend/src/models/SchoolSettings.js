@@ -56,6 +56,11 @@ class SchoolSettings {
       working_days: 'working_days',
       weekly_holiday: 'weekly_holiday',
 
+      // Auto-absence settings
+      absence_check_time: 'absence_check_time',
+      auto_absence_enabled: 'auto_absence_enabled',
+      absence_grace_period_hours: 'absence_grace_period_hours',
+
       // Break times
       first_break_start: 'first_break_start',
       first_break_end: 'first_break_end',

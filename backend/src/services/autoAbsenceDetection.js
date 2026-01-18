@@ -10,11 +10,12 @@ const { maskPhone } = require('../utils/logger');
  *          within specified grace period after school start time.
  *
  * How it works:
- * 1. Runs daily at configured time (default: 11:00 AM)
- * 2. Checks each school's settings for grace period
- * 3. Finds students with no attendance record today
- * 4. Marks them as "absent" automatically
- * 5. Sends SMS notification to parents (WhatsApp disabled)
+ * 1. Runs HOURLY (Monday-Saturday)
+ * 2. Checks each school's configured `absence_check_time`
+ * 3. If current hour matches school's check time, it runs the detection
+ * 4. Finds students with no attendance record today
+ * 5. Marks them as "absent" automatically
+ * 6. Sends SMS notification to parents (WhatsApp disabled)
  *
  * Configuration:
  * - auto_absence_enabled: Enable/disable feature (default: true)
@@ -38,10 +39,10 @@ class AutoAbsenceDetectionService {
       return;
     }
 
-    // Run every day at 11:00 AM (Monday-Saturday)
+    // Run every HOUR at minute 0 (Monday-Saturday)
     // Cron format: minute hour day month dayOfWeek
-    // '0 11 * * 1-6' = 11:00 AM, Monday to Saturday
-    this.job = cron.schedule('0 11 * * 1-6', async () => {
+    // '0 * * * 1-6' = Every hour on the hour, Monday to Saturday
+    this.job = cron.schedule('0 * * * 1-6', async () => {
       if (this.isRunning) {
         console.log('⏭️  Auto-absence check already running, skipping...');
         return;
@@ -61,18 +62,20 @@ class AutoAbsenceDetectionService {
     });
 
     console.log('✅ Auto-absence detection service started');
-    console.log('   Schedule: Daily at 11:00 AM (Monday-Saturday)');
+    console.log('   Schedule: Hourly (Monday-Saturday)');
     console.log('   Timezone: Asia/Kolkata');
   }
 
   /**
    * Main function to detect and mark absences
+   * @param {boolean} forceRun - If true, runs for ALL schools regardless of time check (used for manual trigger)
    */
-  async detectAndMarkAbsences() {
+  async detectAndMarkAbsences(forceRun = false) {
     const startTime = Date.now();
     console.log('\n' + '='.repeat(70));
     console.log('🔍 [AUTO-ABSENCE] Starting automatic absence detection...');
     console.log('   Time:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
+    if (forceRun) console.log('   Mode: MANUAL FORCE RUN (Checking ALL schools)');
     console.log('='.repeat(70));
 
     try {
@@ -80,23 +83,36 @@ class AutoAbsenceDetectionService {
       const today = new Date().toISOString().split('T')[0];
       const dayOfWeek = new Date().getDay(); // 0=Sunday, 6=Saturday
 
-      // Skip on Sundays
-      if (dayOfWeek === 0) {
+      // Skip on Sundays UNLESS forced
+      if (dayOfWeek === 0 && !forceRun) {
         console.log('⏭️  Today is Sunday, skipping auto-absence check');
         return;
       }
 
       // Check if today is a holiday (across all schools)
-      const holidayCheck = await pool.query(
-        `SELECT COUNT(*) as count FROM holidays
-         WHERE holiday_date = $1 AND is_active = true`,
-        [today]
-      );
+      // Note: Ideally holiday checks should be per-school, but existing logic is global.
+      // Keeping it global for now, but `forceRun` overrides it.
+      if (!forceRun) {
+        const holidayCheck = await pool.query(
+          `SELECT COUNT(*) as count FROM holidays
+           WHERE holiday_date = $1 AND is_active = true`,
+          [today]
+        );
 
-      if (parseInt(holidayCheck.rows[0].count) > 0) {
-        console.log('🎉 Today is a holiday, skipping auto-absence check');
-        return;
+        if (parseInt(holidayCheck.rows[0].count) > 0) {
+          console.log('🎉 Today is a holiday, skipping auto-absence check');
+          return;
+        }
       }
+
+      // Get current hour in Indian Time
+      const currentHour = parseInt(new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        hour12: false
+      }));
+
+      console.log(`   Current Hour (IST): ${currentHour}:00`);
 
       let totalStudents = 0;
       let totalAbsent = 0;
@@ -117,19 +133,41 @@ class AutoAbsenceDetectionService {
         LEFT JOIN school_settings ss ON s.id = ss.school_id
       `);
 
-      console.log(`\n📚 Found ${schoolsResult.rows.length} schools to process`);
+      console.log(`\n📚 Found ${schoolsResult.rows.length} total schools`);
 
-      // Process each school
-      for (const school of schoolsResult.rows) {
-        // Skip if auto-absence is disabled for this school
+      // Filter schools to process
+      const schoolsToProcess = schoolsResult.rows.filter(school => {
         if (!school.auto_absence_enabled) {
-          console.log(`\n⏭️  School: ${school.school_name} (ID: ${school.school_id}) - Auto-absence DISABLED`);
-          continue;
+          if (forceRun) console.log(`   ⏭️  School: ${school.school_name} - Disabled`);
+          return false;
         }
 
+        if (forceRun) return true; // Process all if forced
+
+        // Check time match
+        const checkTimeParts = school.absence_check_time.split(':');
+        const checkHour = parseInt(checkTimeParts[0]);
+
+        if (checkHour === currentHour) {
+          return true;
+        } else {
+          // Debug log for skipped schools (optional, maybe too noisy)
+          // console.log(`   ⏭️  School: ${school.school_name} - Scheduled for ${checkHour}:00 (Current: ${currentHour}:00)`);
+          return false;
+        }
+      });
+
+      console.log(`📚 Schools matching criteria: ${schoolsToProcess.length}`);
+
+      if (schoolsToProcess.length === 0) {
+        console.log('   No schools scheduled for this hour.');
+      }
+
+      // Process each eligible school
+      for (const school of schoolsToProcess) {
         console.log(`\n🏫 Processing School: ${school.school_name} (ID: ${school.school_id})`);
         console.log(`   Grace Period: ${school.grace_period_hours} hours`);
-        console.log(`   School Start: ${school.school_start_time}`);
+        console.log(`   Check Time: ${school.absence_check_time}`);
 
         // ✅ PERFORMANCE FIX: Process students in batches to avoid memory issues with large schools
         const BATCH_SIZE = 500;
@@ -177,9 +215,9 @@ class AutoAbsenceDetectionService {
 
           // Check each student in this batch
           for (const student of students) {
-          try {
-            // Check if student has attendance record today
-            const attendanceResult = await pool.query(`
+            try {
+              // Check if student has attendance record today
+              const attendanceResult = await pool.query(`
               SELECT id, status
               FROM attendance_logs
               WHERE student_id = $1
@@ -187,10 +225,10 @@ class AutoAbsenceDetectionService {
               LIMIT 1
             `, [student.id, today]);
 
-            // If NO attendance record, mark as absent
-            if (attendanceResult.rows.length === 0) {
-              // Create absent record (trigger will auto-set academic_year from student)
-              await pool.query(`
+              // If NO attendance record, mark as absent
+              if (attendanceResult.rows.length === 0) {
+                // Create absent record (trigger will auto-set academic_year from student)
+                await pool.query(`
                 INSERT INTO attendance_logs (
                   student_id,
                   school_id,
@@ -205,74 +243,74 @@ class AutoAbsenceDetectionService {
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                 ON CONFLICT (student_id, date, school_id) DO NOTHING
               `, [
-                student.id,
-                school.school_id,
-                `${today} ${school.absence_check_time}`, // Use check time as timestamp
-                today,  // ✅ Date column for unique constraint
-                'absent',
-                null,  // ✅ NULL = system-automated (no specific user)
-                `Auto-marked absent by system: No scan recorded by ${school.absence_check_time} (${school.grace_period_hours}h grace period)`,
-                true  // ✅ is_manual = true to distinguish from RFID scans
-              ]);
+                  student.id,
+                  school.school_id,
+                  `${today} ${school.absence_check_time}`, // Use check time as timestamp
+                  today,  // ✅ Date column for unique constraint
+                  'absent',
+                  null,  // ✅ NULL = system-automated (no specific user)
+                  `Auto-marked absent by system: No scan recorded by ${school.absence_check_time} (${school.grace_period_hours}h grace period)`,
+                  true  // ✅ is_manual = true to distinguish from RFID scans
+                ]);
 
-              schoolAbsent++;
-              totalAbsent++;
+                schoolAbsent++;
+                totalAbsent++;
 
-              console.log(`   ❌ ABSENT: ${student.full_name} (${student.class}-${student.section}, Roll: ${student.roll_number})`);
+                console.log(`   ❌ ABSENT: ${student.full_name} (${student.class}-${student.section}, Roll: ${student.roll_number})`);
 
-              // Send SMS notification to parent (WhatsApp is disabled)
-              // Try multiple phone fields in order of priority (same as attendanceProcessor)
-              let phoneToUse = null;
-              let parentName = 'Parent';
+                // Send SMS notification to parent (WhatsApp is disabled)
+                // Try multiple phone fields in order of priority (same as attendanceProcessor)
+                let phoneToUse = null;
+                let parentName = 'Parent';
 
-              if (student.guardian_phone && student.guardian_phone.trim() !== '') {
-                phoneToUse = student.guardian_phone;
-                parentName = student.guardian_name || 'Guardian';
-              } else if (student.parent_phone && student.parent_phone.trim() !== '') {
-                phoneToUse = student.parent_phone;
-                parentName = student.parent_name || 'Parent';
-              } else if (student.mother_phone && student.mother_phone.trim() !== '') {
-                phoneToUse = student.mother_phone;
-                parentName = 'Mother';
-              }
+                if (student.guardian_phone && student.guardian_phone.trim() !== '') {
+                  phoneToUse = student.guardian_phone;
+                  parentName = student.guardian_name || 'Guardian';
+                } else if (student.parent_phone && student.parent_phone.trim() !== '') {
+                  phoneToUse = student.parent_phone;
+                  parentName = student.parent_name || 'Parent';
+                } else if (student.mother_phone && student.mother_phone.trim() !== '') {
+                  phoneToUse = student.mother_phone;
+                  parentName = 'Mother';
+                }
 
-              if (phoneToUse) {
-                try {
-                  // Use whatsappService.sendAttendanceAlert which will automatically use SMS when WhatsApp is disabled
-                  const alertData = {
-                    parentPhone: phoneToUse,
-                    studentName: student.full_name,
-                    studentId: student.id,
-                    schoolId: school.school_id,
-                    status: 'absent',
-                    checkInTime: school.absence_check_time,
-                    schoolName: school.school_name,
-                    date: today
-                  };
+                if (phoneToUse) {
+                  try {
+                    // Use whatsappService.sendAttendanceAlert which will automatically use SMS when WhatsApp is disabled
+                    const alertData = {
+                      parentPhone: phoneToUse,
+                      studentName: student.full_name,
+                      studentId: student.id,
+                      schoolId: school.school_id,
+                      status: 'absent',
+                      checkInTime: school.absence_check_time,
+                      schoolName: school.school_name,
+                      date: today
+                    };
 
-                  const result = await whatsappService.sendAttendanceAlert(alertData);
+                    const result = await whatsappService.sendAttendanceAlert(alertData);
 
-                  if (result.success) {
-                    schoolNotified++;
-                    totalNotified++;
-                    console.log(`      📱 SMS sent to ${parentName}: ${maskPhone(phoneToUse)}`);
-                  } else {
-                    console.error(`      ❌ SMS failed: ${result.error}`);
+                    if (result.success) {
+                      schoolNotified++;
+                      totalNotified++;
+                      console.log(`      📱 SMS sent to ${parentName}: ${maskPhone(phoneToUse)}`);
+                    } else {
+                      console.error(`      ❌ SMS failed: ${result.error}`);
+                      totalErrors++;
+                    }
+                  } catch (smsError) {
+                    console.error(`      ❌ SMS failed: ${smsError.message}`);
                     totalErrors++;
                   }
-                } catch (smsError) {
-                  console.error(`      ❌ SMS failed: ${smsError.message}`);
-                  totalErrors++;
+                } else {
+                  console.log(`      ⚠️  No phone number found for ${student.full_name} (tried guardian/parent/mother)`);
                 }
-              } else {
-                console.log(`      ⚠️  No phone number found for ${student.full_name} (tried guardian/parent/mother)`);
               }
+            } catch (studentError) {
+              console.error(`   ❌ Error processing ${student.full_name}:`, studentError.message);
+              totalErrors++;
             }
-          } catch (studentError) {
-            console.error(`   ❌ Error processing ${student.full_name}:`, studentError.message);
-            totalErrors++;
           }
-        }
 
           // Move to next batch
           offset += BATCH_SIZE;
@@ -336,7 +374,7 @@ class AutoAbsenceDetectionService {
     return {
       running: this.job !== null,
       isProcessing: this.isRunning,
-      schedule: '0 11 * * 1-6', // 11:00 AM, Monday-Saturday
+      schedule: '0 * * * 1-6', // Hourly
       timezone: 'Asia/Kolkata'
     };
   }
@@ -352,11 +390,12 @@ class AutoAbsenceDetectionService {
     }
 
     console.log('\n🧪 [AUTO-ABSENCE] MANUAL TRIGGER');
-    console.log('This is a manual test run, not the scheduled execution.');
+    console.log('This is a manual test run. It will force run for ALL schools regardless of schedule.');
 
     this.isRunning = true;
     try {
-      await this.detectAndMarkAbsences();
+      // Force run = true
+      await this.detectAndMarkAbsences(true);
       return { success: true, message: 'Manual check completed' };
     } catch (error) {
       console.error('❌ Manual check failed:', error);

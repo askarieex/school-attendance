@@ -44,7 +44,8 @@ const Settings = () => {
     schoolCloseTime: '14:00',
     lateThresholdMinutes: 15,
     workingDays: 'Mon-Sat',
-    weeklyHoliday: 'Sunday'
+    weeklyHoliday: 'Sunday',
+    absenceCheckTime: '11:00'
   });
 
   // Academic Year
@@ -102,7 +103,8 @@ const Settings = () => {
           schoolCloseTime: settings.school_close_time || '14:00',
           lateThresholdMinutes: settings.late_threshold_minutes || 15,
           workingDays: settings.working_days || 'Mon-Sat',
-          weeklyHoliday: settings.weekly_holiday || 'Sunday'
+          weeklyHoliday: settings.weekly_holiday || 'Sunday',
+          absenceCheckTime: settings.absence_check_time || '11:00'
         });
 
         // Parse SMS settings
@@ -264,7 +266,8 @@ const Settings = () => {
         school_close_time: schoolTimings.schoolCloseTime,
         late_threshold_minutes: threshold,
         working_days: schoolTimings.workingDays,
-        weekly_holiday: schoolTimings.weeklyHoliday
+        weekly_holiday: schoolTimings.weeklyHoliday,
+        absence_check_time: schoolTimings.absenceCheckTime
       };
 
       const response = await settingsAPI.update(data);
@@ -706,6 +709,22 @@ const Settings = () => {
                         onChange={(e) => setSchoolTimings({ ...schoolTimings, schoolCloseTime: e.target.value })}
                         required
                       />
+                    </div>
+                    <div className="form-group">
+                      <label>
+                        <FiClock className="inline-icon" />
+                        Auto Absence Check Time
+                      </label>
+                      <input
+                        type="time"
+                        className="input"
+                        value={schoolTimings.absenceCheckTime}
+                        onChange={(e) => setSchoolTimings({ ...schoolTimings, absenceCheckTime: e.target.value })}
+                        required
+                      />
+                      <small className="form-hint">
+                        <FiInfo size={12} /> Time when the system checks for absences and sends alerts
+                      </small>
                     </div>
                     <div className="form-group">
                       <label>Late Threshold (minutes)</label>
