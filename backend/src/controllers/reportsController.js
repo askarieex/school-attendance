@@ -652,17 +652,15 @@ const getWeeklySummary = async (req, res) => {
       weekLogs.forEach(log => {
         if (log.status === 'present' || log.status === 'late') {
           totalPresent++;
-          presentSet.add(log.student_id + '_' + log.date); // Unique check-in per day
+          // SAFE DATE HANDLING: Convert log.date to ISO string before using it
+          const logDateStr = new Date(log.date).toISOString().split('T')[0];
+          presentSet.add(log.student_id + '_' + logDateStr); // Unique check-in per day
         }
       });
 
       // Assume 6 working days
       const maxPossible = totalStudents * 6;
       const avgAttendance = maxPossible > 0 ? Math.round((totalPresent / maxPossible) * 100) : 0;
-
-      // Daily breakdown within week
-      // const dailyBreakdown = {};
-      // (Simple aggregation could be added here if needed for "very detailed" req)
 
       weeks.push({
         weekNumber: 4 - i,
