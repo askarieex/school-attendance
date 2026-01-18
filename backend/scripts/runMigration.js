@@ -11,6 +11,22 @@
 const { pool } = require('../src/config/database');
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+// Try to load .env from current dir or parent dir
+const envPath = path.join(__dirname, '../../.env');
+if (fs.existsSync(envPath)) {
+  console.log(`Loading .env from ${envPath}`);
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config(); // Default load
+}
+
+if (!process.env.DB_PASSWORD) {
+  console.error('❌ Error: DB_PASSWORD is not set. Environment variables are missing.');
+  console.error('Do you have a .env file in the project root?');
+  process.exit(1);
+}
 
 async function runMigration(filename) {
   const migrationPath = path.join(__dirname, '../migrations', filename);
