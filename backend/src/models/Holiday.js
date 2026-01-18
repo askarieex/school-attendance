@@ -68,12 +68,7 @@ class Holiday {
         END as sort_key
        FROM holidays
        ${whereClause}
-       ORDER BY 
-         CASE WHEN is_recurring THEN 
-           EXTRACT(MONTH FROM holiday_date) * 100 + EXTRACT(DAY FROM holiday_date)
-         ELSE 
-           holiday_date 
-         END ASC`,
+       ORDER BY TO_CHAR(holiday_date, 'MM-DD') ASC, holiday_date ASC`,
       params
     );
 
