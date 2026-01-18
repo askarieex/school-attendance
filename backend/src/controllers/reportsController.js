@@ -162,8 +162,8 @@ const getMonthlyReport = async (req, res) => {
 
     // 1. Best and Worst Days
     const sortedDays = [...dailyData].sort((a, b) => b.percentage - a.percentage);
-    const bestDay = sortedDays[0];
-    const worstDay = sortedDays[sortedDays.length - 1];
+    const bestDay = sortedDays[0] || { date: null, percentage: 0, present: 0, absent: 0 };
+    const worstDay = sortedDays[sortedDays.length - 1] || { date: null, percentage: 0, present: 0, absent: 0 };
 
     // 2. Weekly breakdown
     const weeks = [];
