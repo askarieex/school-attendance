@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FiRefreshCw, FiFilter, FiCheckCircle, FiClock, FiXCircle, FiCalendar,
   FiDownload, FiSearch, FiChevronLeft, FiChevronRight, FiSun, FiFileText, FiEdit3, FiUserX, FiHelpCircle
@@ -37,6 +37,14 @@ const AttendanceDaily = () => {
     holidays: 0,
     onLeave: 0
   });
+
+  // ⚡ PERFORMANCE: Pagination state - 8 students for maximum speed
+  const [currentPage, setCurrentPage] = useState(1);
+  const STUDENTS_PER_PAGE = 8;
+
+  // ⚡ PERFORMANCE: Debounced search for instant typing
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [initialLoading, setInitialLoading] = useState(true); // For skeleton on first load only
 
   const getTodayFormatted = () => {
     const today = new Date();
@@ -191,10 +199,10 @@ const AttendanceDaily = () => {
       setLoading(true);
 
       console.log('🔍 Fetching students with filters - class:', classFilter, 'section:', sectionFilter);
-      
+
       // Build query params
       const queryParams = { limit: 1000 };
-      
+
       // Priority: Section filter > Class filter
       if (sectionFilter !== 'all' && sectionFilter) {
         queryParams.sectionId = parseInt(sectionFilter);
@@ -205,11 +213,11 @@ const AttendanceDaily = () => {
       } else {
         console.log('✅ Fetching all students');
       }
-      
+
       console.log('📤 Sending query params:', JSON.stringify(queryParams));
-      
+
       const studentsResponse = await studentsAPI.getAll(queryParams);
-      
+
       console.log('📥 Received response:', studentsResponse);
 
       console.log('📊 Students API Response:', studentsResponse);
@@ -220,12 +228,12 @@ const AttendanceDaily = () => {
 
       const allStudents = studentsResponse.data.students || studentsResponse.data || [];
       console.log(`✅ Fetched ${allStudents.length} students with filters - class: ${classFilter}, section: ${sectionFilter}`);
-      
+
       // If filtering and no students found, show message
       if ((classFilter !== 'all' || sectionFilter !== 'all') && allStudents.length === 0) {
         console.warn('⚠️ No students found for this filter');
       }
-      
+
       setStudents(allStudents);
 
       const year = currentMonth.getFullYear();
@@ -383,12 +391,25 @@ const AttendanceDaily = () => {
   }, [currentMonth, fetchHolidays, fetchLeaves]);
 
   useEffect(() => {
-    if (viewMode === 'monthly') {
-      fetchMonthlyAttendance();
-    } else {
-      fetchDailyAttendance();
-    }
+    const fetchData = async () => {
+      if (viewMode === 'monthly') {
+        await fetchMonthlyAttendance();
+      } else {
+        await fetchDailyAttendance();
+      }
+      // Mark initial loading complete after first data fetch
+      setInitialLoading(false);
+    };
+    fetchData();
   }, [classFilter, sectionFilter, currentMonth, viewMode, fetchMonthlyAttendance, fetchDailyAttendance]);
+
+  // ⚡ PERFORMANCE: Debounced search - 300ms delay for smooth typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const previousMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
@@ -523,7 +544,8 @@ const AttendanceDaily = () => {
     }
   };
 
-  const handleCellClick = (studentId, day, student, event) => {
+  // ⚡ PERFORMANCE: Memoized click handler
+  const handleCellClick = useCallback((studentId, day, student, event) => {
     // Don't allow editing weekends or holidays
     const holiday = holidays[day];
     const weekend = isWeekend(day);
@@ -540,18 +562,18 @@ const AttendanceDaily = () => {
 
     // Set the quick edit cell
     setQuickEditCell({ studentId, day, student, position: { x: event.clientX, y: event.clientY } });
-    
+
     // Also set preselect data for leave modal
     setLeavePreselect({
       student: student,
       date: clickedDate
     });
-    
+
     console.log('📅 Cell clicked:', {
       student: student.full_name,
       date: clickedDate
     });
-  };
+  }, [holidays, currentMonth]);
 
   const handleDailyMarkClick = (student, event) => {
     // For daily view, use current date
@@ -579,20 +601,20 @@ const AttendanceDaily = () => {
     }
 
     // Set quick edit for daily view (using day as today's day number)
-    setQuickEditCell({ 
-      studentId: student.id, 
-      day: todayDay, 
-      student: student, 
+    setQuickEditCell({
+      studentId: student.id,
+      day: todayDay,
+      student: student,
       position: { x: event.clientX, y: event.clientY },
       isDailyView: true
     });
-    
+
     // Also set preselect data for leave modal
     setLeavePreselect({
       student: student,
       date: todayDate
     });
-    
+
     console.log('👆 Daily mark clicked:', {
       student: student.full_name,
       date: todayDate
@@ -670,9 +692,113 @@ const AttendanceDaily = () => {
     }
   };
 
-  const filteredStudents = students.filter(student =>
-    student.full_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ⚡ PERFORMANCE: Memoized filtered students using debounced search
+  const filteredStudents = useMemo(() => {
+    return students.filter(student =>
+      student.full_name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+    );
+  }, [students, debouncedSearchTerm]);
+
+  // ⚡ PERFORMANCE: Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm, classFilter, sectionFilter, currentMonth]);
+
+  // ⚡ PERFORMANCE: Memoized attendance percentages (calculated ONCE, not 3x per student)
+  const attendancePercentages = useMemo(() => {
+    const percentages = {};
+    students.forEach(student => {
+      const studentData = attendanceMap[student.id] || {};
+      let presentCount = 0;
+      let workingDays = 0;
+
+      days.forEach(day => {
+        const holiday = holidays[day];
+        const weekend = isWeekend(day);
+        const leave = leaves[student.id]?.[day];
+
+        if (weekend || holiday) return;
+        workingDays++;
+
+        const dayData = studentData[day];
+        if (dayData) {
+          if (dayData.status === 'present' || dayData.status === 'late') {
+            presentCount++;
+          }
+        } else if (leave && leave.status === 'approved') {
+          workingDays--;
+        }
+      });
+
+      percentages[student.id] = workingDays === 0 ? 0 : Math.round((presentCount / workingDays) * 100);
+    });
+    return percentages;
+  }, [students, attendanceMap, holidays, leaves, days]);
+
+  // ⚡ PERFORMANCE: Paginated students (20 per page instead of 129)
+  const paginatedStudents = useMemo(() => {
+    const start = (currentPage - 1) * STUDENTS_PER_PAGE;
+    return filteredStudents.slice(start, start + STUDENTS_PER_PAGE);
+  }, [filteredStudents, currentPage, STUDENTS_PER_PAGE]);
+
+  const totalPages = Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE);
+
+  // ⚡ PERFORMANCE: Pre-compute cell status for paginated students only
+  // This avoids creating 620+ JSX elements on every render
+  const cellStatusMap = useMemo(() => {
+    const map = {};
+    paginatedStudents.forEach(student => {
+      map[student.id] = {};
+      days.forEach(day => {
+        const dayData = attendanceMap[student.id]?.[day];
+        const holiday = holidays[day];
+        const weekend = isWeekend(day);
+        const leave = leaves[student.id]?.[day];
+
+        let status = 'unmarked';
+        let title = 'Not marked yet';
+        let cssClass = 'badge-unmarked';
+
+        if (weekend) {
+          status = 'S';
+          title = 'Weekend';
+          cssClass = 'badge-weekend';
+        } else if (holiday) {
+          status = 'H';
+          title = holiday.name;
+          cssClass = 'badge-holiday';
+        } else if (leave && leave.status === 'approved') {
+          status = 'LV';
+          title = `Leave: ${leave.reason || leave.type}`;
+          cssClass = 'badge-leave';
+        } else if (dayData) {
+          const attendanceStatus = dayData.status || 'absent';
+          if (attendanceStatus === 'present') {
+            status = 'P';
+            title = `Check-in: ${formatTime(dayData.checkIn)}`;
+            cssClass = 'badge-present';
+          } else if (attendanceStatus === 'late') {
+            status = 'L';
+            title = `Check-in: ${formatTime(dayData.checkIn)}`;
+            cssClass = 'badge-late';
+          } else if (attendanceStatus === 'absent') {
+            status = 'A';
+            title = 'Marked as absent';
+            cssClass = 'badge-absent';
+          } else if (attendanceStatus === 'leave') {
+            status = 'LV';
+            title = 'On leave';
+            cssClass = 'badge-leave';
+          }
+        } else {
+          status = '-';
+        }
+
+        map[student.id][day] = { status, title, cssClass };
+      });
+    });
+    return map;
+  }, [paginatedStudents, days, attendanceMap, holidays, leaves]);
 
   return (
     <div className="attendance-register-container">
@@ -817,7 +943,7 @@ const AttendanceDaily = () => {
             ))}
           </select>
         </div>
-        
+
         <div className="section-filter">
           <FiFilter className="filter-icon" />
           <select
@@ -839,7 +965,7 @@ const AttendanceDaily = () => {
               ))}
           </select>
           {(classFilter !== 'all' || sectionFilter !== 'all') && (
-            <button 
+            <button
               className="clear-filter-btn"
               onClick={() => {
                 setClassFilter('all');
@@ -854,10 +980,25 @@ const AttendanceDaily = () => {
       </div>
 
       {/* Content */}
-      {loading ? (
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p>Loading attendance data...</p>
+      {initialLoading ? (
+        // ⚡ SKELETON LOADING - Modern placeholder during initial load
+        <div className="skeleton-container">
+          <div className="skeleton-header">
+            <div className="skeleton-title"></div>
+          </div>
+          <div className="skeleton-table">
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="skeleton-row">
+                <div className="skeleton-avatar"></div>
+                <div className="skeleton-name"></div>
+                <div className="skeleton-cells">
+                  {[...Array(15)].map((_, j) => (
+                    <div key={j} className="skeleton-cell"></div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : filteredStudents.length === 0 ? (
         <div className="empty-state">
@@ -865,7 +1006,7 @@ const AttendanceDaily = () => {
             <FiCalendar />
           </div>
           <h3>No Students Found</h3>
-          <p>{searchTerm ? 'Try a different search term' : 'Add students to start tracking attendance'}</p>
+          <p>{debouncedSearchTerm ? 'Try a different search term' : 'Add students to start tracking attendance'}</p>
         </div>
       ) : viewMode === 'monthly' ? (
         // MONTHLY CALENDAR VIEW
@@ -891,67 +1032,112 @@ const AttendanceDaily = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((student) => (
-                  <tr key={student.id}>
-                    <td className="sticky-col student-name-col">
-                      <div className="student-name-wrapper">
-                        <div className="student-avatar-tiny">
-                          {student.full_name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="student-details">
-                          <div className="student-name-row">
-                            <span className="student-name-text">{student.full_name}</span>
-                            <span className={`student-percentage ${
-                              calculateStudentAttendancePercentage(student.id) >= 75 ? 'percentage-good' :
-                              calculateStudentAttendancePercentage(student.id) >= 50 ? 'percentage-average' :
-                              'percentage-low'
-                            }`}>
-                              {calculateStudentAttendancePercentage(student.id)}%
-                            </span>
+                {/* ⚡ PERFORMANCE: Using paginated students (20 per page) */}
+                {paginatedStudents.map((student) => {
+                  const percentage = attendancePercentages[student.id] || 0;
+                  return (
+                    <tr key={student.id}>
+                      <td className="sticky-col student-name-col">
+                        <div className="student-name-wrapper">
+                          <div className="student-avatar-tiny">
+                            {student.full_name.charAt(0).toUpperCase()}
                           </div>
-                          <div className="student-meta">
-                            {student.roll_number && (
-                              <span className="student-roll-number">
-                                Roll: {student.roll_number}
+                          <div className="student-details">
+                            <div className="student-name-row">
+                              <span className="student-name-text">{student.full_name}</span>
+                              {/* ⚡ PERFORMANCE: Using memoized percentage */}
+                              <span className={`student-percentage ${percentage >= 75 ? 'percentage-good' :
+                                percentage >= 50 ? 'percentage-average' :
+                                  'percentage-low'
+                                }`}>
+                                {percentage}%
                               </span>
-                            )}
-                            <span className="student-class-text">
-                              {student.class_name && student.section_name
-                                ? `${student.class_name} - ${student.section_name}`
-                                : student.class_name || 'No Class'}
-                            </span>
+                            </div>
+                            <div className="student-meta">
+                              {student.roll_number && (
+                                <span className="student-roll-number">
+                                  Roll: {student.roll_number}
+                                </span>
+                              )}
+                              <span className="student-class-text">
+                                {student.class_name && student.section_name
+                                  ? `${student.class_name} - ${student.section_name}`
+                                  : student.class_name || 'No Class'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    {days.map(day => {
-                      const dayData = attendanceMap[student.id]?.[day];
-                      const holiday = holidays[day];
-                      const weekend = isWeekend(day);
-                      const hasAttendance = dayData && dayData.status;
-                      const isEditable = !weekend && !holiday;
-                      
-                      return (
-                        <td
-                          key={day}
-                          className={`day-cell ${isEditable ? 'day-cell-clickable' : 'day-cell-disabled'} ${hasAttendance ? 'has-attendance' : ''}`}
-                          onClick={(e) => isEditable && handleCellClick(student.id, day, student, e)}
-                          title={
-                            weekend ? 'Weekend - No attendance' :
-                            holiday ? `Holiday: ${holiday.name}` :
-                            hasAttendance ? `Click to edit ${dayData.status} status` :
-                            'Click to mark attendance'
-                          }
-                        >
-                          {getCellContent(student.id, day)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                      </td>
+                      {days.map(day => {
+                        const cellData = cellStatusMap[student.id]?.[day] || { status: '-', title: 'Not marked', cssClass: 'badge-unmarked' };
+                        const holiday = holidays[day];
+                        const weekend = isWeekend(day);
+                        const isEditable = !weekend && !holiday;
+                        const hasAttendance = cellData.cssClass === 'badge-present' || cellData.cssClass === 'badge-late' || cellData.cssClass === 'badge-absent';
+
+                        return (
+                          <td
+                            key={day}
+                            className={`day-cell ${isEditable ? 'day-cell-clickable' : 'day-cell-disabled'} ${hasAttendance ? 'has-attendance' : ''}`}
+                            onClick={(e) => isEditable && handleCellClick(student.id, day, student, e)}
+                          >
+                            {/* ⚡ PERFORMANCE: Using pre-computed cell data */}
+                            <span className={`badge-mark ${cellData.cssClass}`} title={cellData.title}>
+                              {cellData.status}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* ⚡ PERFORMANCE: Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="pagination-controls">
+              <div className="pagination-info">
+                Showing {((currentPage - 1) * STUDENTS_PER_PAGE) + 1}-{Math.min(currentPage * STUDENTS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students
+              </div>
+              <div className="pagination-buttons">
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  title="First page"
+                >
+                  ««
+                </button>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <FiChevronLeft /> Prev
+                </button>
+                <span className="page-indicator">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next <FiChevronRight />
+                </button>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  title="Last page"
+                >
+                  »»
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         // DAILY DETAILED VIEW
@@ -961,7 +1147,7 @@ const AttendanceDaily = () => {
             const today = new Date();
             const todayDay = today.getDate();
             const todayHoliday = holidays[todayDay];
-            
+
             if (todayHoliday) {
               return (
                 <div className="holiday-alert-banner">
@@ -973,7 +1159,7 @@ const AttendanceDaily = () => {
                 </div>
               );
             }
-            
+
             // Check if Sunday
             const dayOfWeek = today.getDay();
             if (dayOfWeek === 0) {
@@ -987,82 +1173,82 @@ const AttendanceDaily = () => {
                 </div>
               );
             }
-            
+
             return null;
           })()}
-          
-          <div className="table-container">
-          <table className="attendance-table">
-            <thead>
-              <tr>
-                <th className="col-sno">#</th>
-                <th className="col-name">Student Name</th>
-                <th className="col-class">Class</th>
-                <th className="col-time">Check-In</th>
-                <th className="col-time">Check-Out</th>
-                <th className="col-status">Status</th>
-                <th className="col-reason">Leave Reason</th>
-                <th className="col-icon">Mark</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.map((student, index) => {
-                const data = attendanceMap[student.id];
-                const status = data?.status || 'unmarked';
-                const rowClass = status === 'present' ? 'row-present' :
-                                status === 'late' ? 'row-late' :
-                                status === 'absent' ? 'row-absent' : 'row-unmarked';
 
-                return (
-                  <tr key={student.id} className={rowClass}>
-                    <td className="col-sno">{index + 1}</td>
-                    <td className="col-name">
-                      <div className="student-info">
-                        <div className="student-avatar-small">
-                          {student.full_name.charAt(0).toUpperCase()}
+          <div className="table-container">
+            <table className="attendance-table">
+              <thead>
+                <tr>
+                  <th className="col-sno">#</th>
+                  <th className="col-name">Student Name</th>
+                  <th className="col-class">Class</th>
+                  <th className="col-time">Check-In</th>
+                  <th className="col-time">Check-Out</th>
+                  <th className="col-status">Status</th>
+                  <th className="col-reason">Leave Reason</th>
+                  <th className="col-icon">Mark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student, index) => {
+                  const data = attendanceMap[student.id];
+                  const status = data?.status || 'unmarked';
+                  const rowClass = status === 'present' ? 'row-present' :
+                    status === 'late' ? 'row-late' :
+                      status === 'absent' ? 'row-absent' : 'row-unmarked';
+
+                  return (
+                    <tr key={student.id} className={rowClass}>
+                      <td className="col-sno">{index + 1}</td>
+                      <td className="col-name">
+                        <div className="student-info">
+                          <div className="student-avatar-small">
+                            {student.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="student-name-details">
+                            <span className="student-name">{student.full_name}</span>
+                            {student.roll_number && (
+                              <span className="student-roll-badge">Roll: {student.roll_number}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="student-name-details">
-                          <span className="student-name">{student.full_name}</span>
-                          {student.roll_number && (
-                            <span className="student-roll-badge">Roll: {student.roll_number}</span>
-                          )}
+                      </td>
+                      <td className="col-class">
+                        {student.class_name && student.section_name
+                          ? `${student.class_name} - ${student.section_name}`
+                          : student.class_name || '-'}
+                      </td>
+                      <td className="col-time">{formatTime(data?.checkIn)}</td>
+                      <td className="col-time">{formatTime(data?.checkOut)}</td>
+                      <td className="col-status">
+                        <span className={`status-text status-${status}`}>
+                          {status === 'present' ? 'Present' :
+                            status === 'late' ? 'Late' :
+                              status === 'absent' ? 'Absent' :
+                                status === 'leave' ? 'On Leave' :
+                                  'Not Marked'}
+                        </span>
+                      </td>
+                      <td className="col-reason">
+                        {data?.leaveReason || '-'}
+                      </td>
+                      <td className="col-icon">
+                        <div
+                          className="mark-cell clickable"
+                          onClick={(e) => handleDailyMarkClick(student, e)}
+                          title="Click to mark attendance"
+                        >
+                          {getStatusIcon(data)}
+                          {getStatusBadge(data)}
                         </div>
-                      </div>
-                    </td>
-                    <td className="col-class">
-                      {student.class_name && student.section_name
-                        ? `${student.class_name} - ${student.section_name}`
-                        : student.class_name || '-'}
-                    </td>
-                    <td className="col-time">{formatTime(data?.checkIn)}</td>
-                    <td className="col-time">{formatTime(data?.checkOut)}</td>
-                    <td className="col-status">
-                      <span className={`status-text status-${status}`}>
-                        {status === 'present' ? 'Present' :
-                         status === 'late' ? 'Late' :
-                         status === 'absent' ? 'Absent' :
-                         status === 'leave' ? 'On Leave' :
-                         'Not Marked'}
-                      </span>
-                    </td>
-                    <td className="col-reason">
-                      {data?.leaveReason || '-'}
-                    </td>
-                    <td className="col-icon">
-                      <div 
-                        className="mark-cell clickable"
-                        onClick={(e) => handleDailyMarkClick(student, e)}
-                        title="Click to mark attendance"
-                      >
-                        {getStatusIcon(data)}
-                        {getStatusBadge(data)}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

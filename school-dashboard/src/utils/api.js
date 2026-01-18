@@ -274,6 +274,9 @@ export const reportsAPI = {
   getMonthlyReport: (params) => api.get('/school/reports/monthly', { params }),
   getStudentReport: (studentId, params) => api.get(`/school/reports/student/${studentId}`, { params }),
   getClassReport: (classId, params) => api.get(`/school/reports/class/${classId}`, { params }),
+  getWeeklySummary: (params) => api.get('/school/reports/weekly', { params }),
+  getLowAttendance: (params) => api.get('/school/reports/low-attendance', { params }),
+  getPerfectAttendance: (params) => api.get('/school/reports/perfect-attendance', { params }),
   exportReport: (type, params) => api.get(`/school/reports/export/${type}`, { params, responseType: 'blob' }),
 };
 

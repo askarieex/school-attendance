@@ -63,7 +63,7 @@ const Reports = () => {
       console.log('⚠️ No class selected, skipping student fetch');
       return;
     }
-    
+
     try {
       console.log('👨‍🎓 Fetching students for class:', selectedClass);
       const response = await studentsAPI.getAll({ classId: selectedClass });
@@ -103,8 +103,8 @@ const Reports = () => {
           response = await reportsAPI.getDailyReport({ date: dateRange.startDate });
           break;
         case 'monthly':
-          response = await reportsAPI.getMonthlyReport({ 
-            year: selectedMonth.year, 
+          response = await reportsAPI.getMonthlyReport({
+            year: selectedMonth.year,
             month: selectedMonth.month
           });
           break;
@@ -131,13 +131,13 @@ const Reports = () => {
           });
           break;
         case 'weekly':
-          response = await generateWeeklySummary();
+          response = await reportsAPI.getWeeklySummary({ startDate: dateRange.startDate });
           break;
         case 'lowAttendance':
-          response = await generateLowAttendanceReport();
+          response = await reportsAPI.getLowAttendance({ threshold: 75 });
           break;
         case 'perfect':
-          response = await generatePerfectAttendanceReport();
+          response = await reportsAPI.getPerfectAttendance();
           break;
         case 'comparison':
           response = await generateComparisonReport();
@@ -161,106 +161,13 @@ const Reports = () => {
     }
   };
 
-  const generateWeeklySummary = async () => {
-    try {
-      const response = await studentsAPI.getAll({ limit: 1000 });
-      const allStudents = response.data.students || [];
-      
-      // Generate weekly data
-      const weeks = [];
-      const startDate = new Date(dateRange.startDate);
-      const endDate = new Date(dateRange.endDate);
-      
-      let currentWeek = new Date(startDate);
-      while (currentWeek <= endDate) {
-        const weekEnd = new Date(currentWeek);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        
-        weeks.push({
-          weekStart: currentWeek.toLocaleDateString('en-IN'),
-          weekEnd: weekEnd.toLocaleDateString('en-IN'),
-          totalStudents: allStudents.length,
-          avgAttendance: Math.floor(85 + Math.random() * 10),
-          presentDays: Math.floor(allStudents.length * 0.9),
-          absentDays: Math.floor(allStudents.length * 0.1)
-        });
-        
-        currentWeek = new Date(weekEnd);
-        currentWeek.setDate(currentWeek.getDate() + 1);
-      }
-      
-      return {
-        success: true,
-        data: { weeks, totalWeeks: weeks.length }
-      };
-    } catch (error) {
-      console.error('Error generating weekly summary:', error);
-      return { success: false };
-    }
-  };
 
-  const generateLowAttendanceReport = async () => {
-    try {
-      const response = await studentsAPI.getAll({ limit: 1000 });
-      const allStudents = response.data.students || [];
-      
-      // Simulate low attendance data
-      const lowAttendanceStudents = allStudents.filter(() => Math.random() < 0.3).map(student => ({
-        ...student,
-        attendanceRate: Math.floor(40 + Math.random() * 30), // 40-70%
-        absentDays: Math.floor(5 + Math.random() * 10),
-        totalDays: 20
-      }));
-      
-      return {
-        success: true,
-        data: {
-          threshold: 75,
-          studentsCount: lowAttendanceStudents.length,
-          students: lowAttendanceStudents
-        }
-      };
-    } catch (error) {
-      console.error('Error generating low attendance report:', error);
-      return { success: false };
-    }
-  };
-
-  const generatePerfectAttendanceReport = async () => {
-    try {
-      const response = await studentsAPI.getAll({ limit: 1000 });
-      const allStudents = response.data.students || [];
-      
-      // Simulate perfect attendance data
-      const perfectStudents = allStudents.filter(() => Math.random() < 0.15).map(student => ({
-        ...student,
-        attendanceRate: 100,
-        presentDays: 20,
-        totalDays: 20
-      }));
-      
-      return {
-        success: true,
-        data: {
-          studentsCount: perfectStudents.length,
-          students: perfectStudents,
-          dateRange: {
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate
-          }
-        }
-      };
-    } catch (error) {
-      console.error('Error generating perfect attendance report:', error);
-      return { success: false };
-    }
-  };
 
   const generateComparisonReport = async () => {
     try {
       const classesResponse = await classesAPI.getAll();
       const allClasses = classesResponse.data.classes || [];
-      
+
       // Generate comparison data for each class
       const comparison = allClasses.map(cls => ({
         classId: cls.id,
@@ -271,7 +178,7 @@ const Reports = () => {
         absentRate: Math.floor(5 + Math.random() * 10),
         lateRate: Math.floor(2 + Math.random() * 5)
       }));
-      
+
       return {
         success: true,
         data: {
@@ -290,7 +197,7 @@ const Reports = () => {
 
   const processReportData = (data, type) => {
     console.log('📊 Processing report data:', data);
-    
+
     if (type === 'daily') {
       // Process daily report
       setReportData({
@@ -617,7 +524,7 @@ const Reports = () => {
               {/* Executive Summary */}
               <div className="report-section">
                 <h3 className="section-title">📊 Executive Summary</h3>
-                
+
                 {/* Month Overview */}
                 <div className="month-overview-grid">
                   <div className="overview-card">
@@ -857,7 +764,7 @@ const Reports = () => {
               {reportData.alerts && (
                 <div className="report-section">
                   <h3 className="section-title">⚠️ Alerts & Action Items</h3>
-                  
+
                   {reportData.alerts.studentsNeedingAttention && reportData.alerts.studentsNeedingAttention.length > 0 && (
                     <div className="alert-box alert-warning mb-lg">
                       <h4>Students Needing Attention (Below 75%)</h4>
@@ -921,7 +828,7 @@ const Reports = () => {
               {reportData.dailyData && reportData.dailyData.length > 0 && (
                 <div className="report-section">
                   <h3 className="section-title">📈 Daily Attendance Details</h3>
-                  
+
                   <div className="chart-placeholder mb-lg">
                     <h4 className="subsection-title">Visual Trend (Last 15 Days)</h4>
                     <div className="attendance-chart">
@@ -963,11 +870,10 @@ const Reports = () => {
                               <td className="text-danger">{day.absent}</td>
                               <td className="font-bold">{day.percentage}%</td>
                               <td>
-                                <span className={`badge ${
-                                  day.percentage >= 90 ? 'badge-success' : 
-                                  day.percentage >= 75 ? 'badge-warning' : 
-                                  'badge-danger'
-                                }`}>
+                                <span className={`badge ${day.percentage >= 90 ? 'badge-success' :
+                                  day.percentage >= 75 ? 'badge-warning' :
+                                    'badge-danger'
+                                  }`}>
                                   {day.percentage >= 90 ? 'Excellent' : day.percentage >= 75 ? 'Good' : 'Poor'}
                                 </span>
                               </td>
@@ -993,7 +899,7 @@ const Reports = () => {
                 <div>
                   <h2>{reportData.student.full_name}</h2>
                   <p className="student-meta-info">
-                    <strong>Roll Number:</strong> {reportData.student.roll_number || 'N/A'} | 
+                    <strong>Roll Number:</strong> {reportData.student.roll_number || 'N/A'} |
                     <strong> Class:</strong> {reportData.student.class_name || 'N/A'} {reportData.student.section_name ? `- ${reportData.student.section_name}` : ''}
                   </p>
                   <p className="student-date-range">
@@ -1005,7 +911,7 @@ const Reports = () => {
               {/* Summary Statistics */}
               <div className="report-section">
                 <h3 className="section-title">📊 Attendance Summary</h3>
-                
+
                 {/* Overview Cards */}
                 <div className="month-overview-grid">
                   <div className="overview-card">
@@ -1063,13 +969,13 @@ const Reports = () => {
                 <div className={`alert-box mt-lg ${parseFloat(reportData.statistics?.attendanceRate) >= 75 ? 'alert-success' : 'alert-warning'}`}>
                   <h4>
                     {parseFloat(reportData.statistics?.attendanceRate) >= 90 ? '🏆 Excellent Performance!' :
-                     parseFloat(reportData.statistics?.attendanceRate) >= 75 ? '✅ Good Performance' :
-                     '⚠️ Needs Improvement'}
+                      parseFloat(reportData.statistics?.attendanceRate) >= 75 ? '✅ Good Performance' :
+                        '⚠️ Needs Improvement'}
                   </h4>
                   <p>
                     {parseFloat(reportData.statistics?.attendanceRate) >= 90 ? 'Outstanding attendance record. Keep up the great work!' :
-                     parseFloat(reportData.statistics?.attendanceRate) >= 75 ? 'Good attendance. Maintain this consistency.' :
-                     'Attendance is below the required threshold of 75%. Immediate attention needed.'}
+                      parseFloat(reportData.statistics?.attendanceRate) >= 75 ? 'Good attendance. Maintain this consistency.' :
+                        'Attendance is below the required threshold of 75%. Immediate attention needed.'}
                   </p>
                 </div>
               </div>
@@ -1097,17 +1003,16 @@ const Reports = () => {
                             <td>{log.check_in_time || '-'}</td>
                             <td>{log.check_out_time || '-'}</td>
                             <td>
-                              <span className={`badge ${
-                                log.status === 'present' ? 'badge-success' : 
-                                log.status === 'late' ? 'badge-warning' : 
-                                log.status === 'absent' ? 'badge-danger' :
-                                log.status === 'weekend' ? 'badge-info' :
-                                log.status === 'holiday' ? 'badge-warning' :
-                                'badge-secondary'
-                              }`}>
+                              <span className={`badge ${log.status === 'present' ? 'badge-success' :
+                                log.status === 'late' ? 'badge-warning' :
+                                  log.status === 'absent' ? 'badge-danger' :
+                                    log.status === 'weekend' ? 'badge-info' :
+                                      log.status === 'holiday' ? 'badge-warning' :
+                                        'badge-secondary'
+                                }`}>
                                 {log.status === 'weekend' ? '☀️ Weekend' :
-                                 log.status === 'holiday' ? '🎉 Holiday' :
-                                 log.status.charAt(0).toUpperCase() + log.status.slice(1)}
+                                  log.status === 'holiday' ? '🎉 Holiday' :
+                                    log.status.charAt(0).toUpperCase() + log.status.slice(1)}
                               </span>
                             </td>
                           </tr>
@@ -1344,7 +1249,7 @@ const Reports = () => {
                       <div key={cls.classId} className="chart-bar-row">
                         <span className="chart-label-left">{cls.className}</span>
                         <div className="chart-bar-track">
-                          <div 
+                          <div
                             className={`chart-bar-fill ${index === 0 ? 'bar-success' : index === 1 ? 'bar-warning' : 'bar-info'}`}
                             style={{ width: `${cls.avgAttendance}%` }}
                           >

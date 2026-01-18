@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -732,513 +733,974 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  // Dashboard View - Modern Clean Design
+  // Dashboard View - ✅ PREMIUM GLASSMORPHIC DESIGN (Refined)
   Widget _buildDashboardView() {
-    // ✅ PERFORMANCE FIX: Use listen: false to prevent unnecessary rebuilds
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final totalClasses = _classes.length;
-    final totalStudents = _classes.fold<int>(
-      0,
-      (sum, c) => sum + (c['student_count'] as int? ?? 0),
-    );
+    final attendancePercent = (_dashboardStats['attendancePercentage'] as num? ?? 0).toDouble();
+    final presentCount = (_dashboardStats['presentToday'] ?? 0) + (_dashboardStats['lateToday'] ?? 0);
+    final lateCount = _dashboardStats['lateToday'] ?? 0;
+    final absentCount = _dashboardStats['absentToday'] ?? 0;
+    final userName = authProvider.currentUser?.name ?? 'Teacher';
 
-    return RefreshIndicator(
-      onRefresh: _loadClasses,
-      color: const Color(0xFF6366F1),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Beautiful Gradient Header
-            _buildModernDashboardHeader(context, authProvider),
-            const SizedBox(height: 24),
-
-            // Today's Overview Title
-            const Text(
-              'Today\'s Overview',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _getFormattedDate(),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 18),
-
-            // ✅ IMPROVED: Clickable Attendance Summary Card with gradient
-            GestureDetector(
-              onTap: () {
-                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AttendanceFilterScreen(
-                      apiService: authProvider.apiService,
-                      classes: _classes,
-                    ),
-                  ),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2B9AFF), Color(0xFF0D6EFD)],
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FE),
+      body: RefreshIndicator(
+        onRefresh: _loadClasses,
+        color: const Color(0xFF7C3AED),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ══════════════════════════════════════════════════════════════
+              // GRADIENT HEADER - CLEAN (No duplicate icons)
+              // ══════════════════════════════════════════════════════════════
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF2B9AFF).withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(32),
+                    bottomRight: Radius.circular(32),
+                  ),
                 ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Attendance Rate',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                    child: Row(
+                      children: [
+                        // Profile Avatar
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                            color: Colors.white.withOpacity(0.2),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          child: const Center(
+                            child: Icon(Icons.person_rounded, color: Colors.white, size: 26),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${_dashboardStats['attendancePercentage']}',
-                                style: const TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: -2,
+                                'Welcome back,',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withOpacity(0.85),
+                                  letterSpacing: 0.3,
                                 ),
                               ),
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 8, left: 2),
-                                child: Text(
-                                  '%',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
+                              const SizedBox(height: 2),
+                              Text(
+                                userName,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
                                 ),
                               ),
                             ],
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ══════════════════════════════════════════════════════════════
+              // ATTENDANCE SUMMARY CARD
+              // ══════════════════════════════════════════════════════════════
+              Transform.translate(
+                offset: const Offset(0, -24),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF8B5CF6).withOpacity(0.12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        "Today's Attendance",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                        ).createShader(bounds),
+                        child: Text(
+                          '${attendancePercent.toInt()}%',
+                          style: const TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1,
+                            letterSpacing: -2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Progress Bar
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: attendancePercent / 100,
+                          backgroundColor: Colors.grey.shade200,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
+                          minHeight: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Stats Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildStatBadge('$presentCount', 'Present', const Color(0xFF10B981)),
+                          _buildStatBadge('$absentCount', 'Absent', const Color(0xFFEF4444)),
+                          _buildStatBadge('$lateCount', 'Late', const Color(0xFFF59E0B)),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.trending_up,
-                          color: Color(0xFF2B9AFF),
-                          size: 32,
-                        ),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    height: 1,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildGradientMiniStat(
-                        '${(_dashboardStats['presentToday'] ?? 0) + (_dashboardStats['lateToday'] ?? 0)}',  // ✅ FIX: Combine present + late
-                        'Present',
-                        Icons.check_circle,
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.white,
-                      ),
-                      _buildGradientMiniStat(
-                        '${_dashboardStats['lateToday']}',
-                        'Late',
-                        Icons.access_time,
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.white,
-                      ),
-                      _buildGradientMiniStat(
-                        '${_dashboardStats['absentToday']}',
-                        'Absent',
-                        Icons.cancel,
-                      ),
-                    ],
-                  ),
-
-                ],
+                ),
               ),
-              ),
-            ),
 
-            const SizedBox(height: 20),
-
-            // Student Statistics Grid
-            const Text(
-              'Student Statistics',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.groups_rounded,
-                    label: 'Total Students',
-                    value: '${_dashboardStats['totalStudents']}',
-                    color: const Color(0xFF00B4D8),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.school_rounded,
-                    label: 'My Classes',
-                    value: '$totalClasses',
-                    color: const Color(0xFF6366F1),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.male_rounded,
-                    label: 'Boys',
-                    value: '${_dashboardStats['boysCount']}',
-                    color: const Color(0xFF3B82F6),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.female_rounded,
-                    label: 'Girls',
-                    value: '${_dashboardStats['girlsCount']}',
-                    color: const Color(0xFFFF2D55),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF2D55), Color(0xFFFF3B30)],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // Additional Stats Row
-            Row(
-              children: [
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.event_busy_rounded,
-                    label: 'On Leave',
-                    value: '${_dashboardStats['leaveToday']}',
-                    color: const Color(0xFFAF52DE),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFAF52DE), Color(0xFF8B5CF6)],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildBeautifulStatCard(
-                    icon: Icons.pending_outlined,
-                    label: 'Not Marked',
-                    value: '${_dashboardStats['notMarkedToday']}',
-                    color: const Color(0xFF8E8E93),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF8E8E93), Color(0xFF636366)],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 32),
-
-            // Quick Actions Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
+              // ══════════════════════════════════════════════════════════════
+              // QUICK ACTIONS
+              // ══════════════════════════════════════════════════════════════
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Text(
                   'Quick Actions',
                   style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.5,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                    letterSpacing: -0.3,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Vertical list of action cards like reference
-            cards.buildModernActionCard(
-              icon: Icons.qr_code_scanner,
-              label: 'QR Scanner',
-              subtitle: 'Scan student ID',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
               ),
-              onTap: () {},
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.filter_list_rounded,
-              label: 'Filter Students',
-              subtitle: 'View by status (Present/Absent/Late/Leave)',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildQuickAction(
+                        Icons.check_circle_outline_rounded,
+                        'Mark Attendance',
+                        'Quick check-in',
+                        const Color(0xFF8B5CF6),
+                        () => setState(() => _selectedIndex = 1),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _buildQuickAction(
+                        Icons.calendar_month_rounded,
+                        'Calendar',
+                        'Monthly view',
+                        const Color(0xFF6366F1),
+                        () => setState(() => _selectedIndex = 2),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              onTap: () {
-                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AttendanceFilterScreen(
-                      apiService: authProvider.apiService,
-                      classes: _classes,
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildQuickAction(
+                        Icons.insert_chart_rounded,
+                        'Reports',
+                        'View analytics',
+                        const Color(0xFF10B981),
+                        () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen())),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _buildQuickAction(
+                        Icons.campaign_rounded,
+                        'Send Alert',
+                        'Notify parents',
+                        const Color(0xFFEC4899),
+                        () {},
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ══════════════════════════════════════════════════════════════
+              // MY CLASSES - VERTICAL LIST
+              // ══════════════════════════════════════════════════════════════
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'My Classes',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    if (_classes.length > 3)
+                      GestureDetector(
+                        onTap: () => setState(() => _selectedIndex = 1),
+                        child: Text(
+                          'See All',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF8B5CF6),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (_classes.isEmpty)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.school_outlined, size: 40, color: Colors.grey.shade400),
+                        const SizedBox(height: 12),
+                        Text('No classes assigned', style: TextStyle(color: Colors.grey.shade500)),
+                      ],
                     ),
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.edit_note,
-              label: 'Mark Attendance',
-              subtitle: 'Manual entry',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF10B981), Color(0xFF059669)],
-              ),
-              onTap: () {
-                setState(() => _selectedIndex = 1);
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.analytics_outlined,
-              label: 'Reports',
-              subtitle: 'View analytics',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ReportsScreen()),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.campaign_outlined,
-              label: 'Broadcast',
-              subtitle: 'Send message',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
-              ),
-              onTap: () {},
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.event_available,
-              label: 'Leave Management',
-              subtitle: 'Mark student leaves',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFAF52DE), Color(0xFF8B5CF6)],
-              ),
-              onTap: () {
-                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => LeaveManagementScreen(
-                      apiService: authProvider.apiService,
-                      classes: _classes,
+                )
+              else
+                ...List.generate(
+                  _classes.length > 3 ? 3 : _classes.length,
+                  (index) => _buildClassListItem(_classes[index], index),
+                ),
+
+              // ══════════════════════════════════════════════════════════════
+              // ATTENDANCE INSIGHTS CARD
+              // ══════════════════════════════════════════════════════════════
+              Container(
+                margin: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
                     ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.people_alt_outlined,
-              label: 'Student List',
-              subtitle: 'View all students',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF007AFF), Color(0xFF5E5CE6)],
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF2FF),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(Icons.trending_up_rounded, color: Color(0xFF6366F1), size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Monthly Average',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1F2937),
+                                ),
+                              ),
+                              Text(
+                                'January 2026',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${attendancePercent.toInt()}%',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF6366F1),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      height: 1,
+                      color: Colors.grey.shade100,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Best Day',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Friday • 97%',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1F2937),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Improvement',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.arrow_upward_rounded, color: Color(0xFF10B981), size: 16),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    '+3.2%',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              onTap: () {
-                setState(() => _selectedIndex = 3);
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.calendar_month,
-              label: 'Attendance Calendar',
-              subtitle: 'Monthly overview',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF34C759), Color(0xFF30D158)],
-              ),
-              onTap: () {
-                setState(() => _selectedIndex = 2);
-              },
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.assignment_outlined,
-              label: 'Assignments',
-              subtitle: 'Create & manage',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF9500), Color(0xFFFF6B00)],
-              ),
-              onTap: () {},
-            ),
-            const SizedBox(height: 12),
-            cards.buildModernActionCard(
-              icon: Icons.grade_outlined,
-              label: 'Grades & Results',
-              subtitle: 'View performance',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF2D55), Color(0xFFFF3B30)],
-              ),
-              onTap: () {},
-            ),
-            
-            const SizedBox(height: 36),
-            
-            // My Classes Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'My Classes',
+
+              // ══════════════════════════════════════════════════════════════
+              // RECENT ACTIVITY
+              // ══════════════════════════════════════════════════════════════
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 28, 20, 16),
+                child: Text(
+                  'Recent Activity',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1C1C1E),
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1F2937),
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    setState(() => _selectedIndex = 1);
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF007AFF),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'See All',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              _buildActivityItem(
+                Icons.check_box_rounded,
+                const Color(0xFF8B5CF6),
+                'Attendance Marked',
+                'You marked attendance for ${_classes.isNotEmpty ? "${_classes[0]['class_name']}-${_classes[0]['section_name']}" : "your class"}',
+                'Today at 8:30 AM',
+              ),
+              _buildActivityItem(
+                Icons.mail_rounded,
+                const Color(0xFFEC4899),
+                'Parent Notification Sent',
+                'Absence alert sent to parents',
+                'Today at 9:00 AM',
+              ),
+              _buildActivityItem(
+                Icons.description_rounded,
+                const Color(0xFF10B981),
+                'Report Generated',
+                'Monthly attendance report',
+                'Yesterday at 4:15 PM',
+              ),
+
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HELPER WIDGETS - NEW PREMIUM DESIGN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildStatBadge(String value, String label, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Center(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(height: 14),
-            
-            if (_classes.isEmpty)
-              cards.buildEmptyClassesCard()
-            else
-              ..._classes.take(2).map((classData) {
-                final className = classData['class_name'] ?? '';
-                final sectionName = classData['section_name'] ?? '';
-                final subject = classData['subject'] ?? '';
-                final studentCount = classData['student_count'] ?? 0;
-                
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: cards.buildMiniClassCard(
-                    className: className,
-                    sectionName: sectionName,
-                    subject: subject,
-                    studentCount: studentCount,
-                    onTap: () {
-                      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                                            builder: (context) => ClassAttendanceScreen(
-                                              classData: classData,
-                                            ),
-                          
-                        ),
-                      );
-                    },
-                  ),
-                );
-              }),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickAction(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade500,
+                letterSpacing: 0.1,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  String _getFormattedDate() {
-    final now = DateTime.now();
-    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${days[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
+  Widget _buildClassListItem(Map<String, dynamic> classData, int index) {
+    final colors = [
+      const Color(0xFF8B5CF6),
+      const Color(0xFF10B981),
+      const Color(0xFF3B82F6),
+      const Color(0xFFF59E0B),
+    ];
+    final color = colors[index % colors.length];
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ClassAttendanceScreen(classData: classData)),
+      ),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Gradient Icon
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.7)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.school_rounded, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            // Class Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${classData['class_name']}-${classData['section_name']}',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F2937),
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.people_outline_rounded, size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${classData['student_count'] ?? 0} Students',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Arrow
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF9CA3AF)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
+  Widget _buildActivityItem(IconData icon, Color color, String title, String subtitle, String time) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Text(
+            time.split(' at ').last,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 💎 Premium Glass Card
+  Widget _buildGlassCard() {
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9), // Higher opacity for cleaner look
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6366F1).withOpacity(0.2), // Soft Purple Shadow
+            blurRadius: 30, // Big blur
+            offset: const Offset(0, 15),
+          ),
+        ],
+        border: Border.all(color: Colors.white, width: 2), // Clean white border
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Average Attendance',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280), // Medium Grey
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _getFormattedDate(),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade400,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5), // Light Green
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.trending_up, size: 16, color: Color(0xFF10B981)),
+                    SizedBox(width: 6),
+                    Text(
+                      'Good',
+                      style: TextStyle(
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${_dashboardStats['attendancePercentage']}%',
+                style: const TextStyle(
+                  fontSize: 52, // HUGE
+                  fontWeight: FontWeight.w900, // Black weight
+                  color: Color(0xFF111827), // Almost Black
+                  letterSpacing: -2.0,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Clean Progress Bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: (_dashboardStats['attendancePercentage'] as num? ?? 0) / 100,
+              backgroundColor: const Color(0xFFF3F4F6),
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)), // Indigo
+              minHeight: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 💊 Premium Status Pill (Vertical)
+  Widget _buildStatusPill(String label, String value, IconData icon, Color color, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24), // Very rounded
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04), // Subtle shadow
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: bgColor, // Pastel background
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF9CA3AF),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 🔘 Big Square Action Card
+  Widget _buildBigActionCard(String label, IconData icon, Color color, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 140, // Square-ish
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1), // Very light tint of the brand color
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: color.withOpacity(0.0), width: 0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: color.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  // Helper Widget: Premium Class Card
+  Widget _buildPremiumClassCard(Map<String, dynamic> classData) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ClassAttendanceScreen(classData: classData),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.class_rounded, color: Color(0xFF4F46E5), size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${classData['class_name']}-${classData['section_name']}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.people_outline, size: 14, color: Color(0xFF6B7280)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${classData['student_count'] ?? 0} Students',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const CircleAvatar(
+              backgroundColor: Color(0xFFF9FAFB),
+              child: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF9CA3AF)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
   Widget _buildBottomNavigation() {
     return Container(
       decoration: const BoxDecoration(
@@ -1295,14 +1757,14 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           children: [
             Icon(
               icon,
-              color: isSelected ? const Color(0xFF2B9AFF) : Colors.black, // Brand blue when selected
+              color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF9CA3AF),
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? const Color(0xFF2B9AFF) : const Color(0xFF666666),
+                color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF9CA3AF),
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
@@ -1313,457 +1775,123 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // Classes View
+  // Views Implementation
   Widget _buildClassesView() {
     return RefreshIndicator(
       onRefresh: _loadClasses,
-      color: const Color(0xFF6366F1),
+      color: const Color(0xFF4F46E5),
       child: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF6366F1),
-              ),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5)))
           : _classes.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Icon(
-                          Icons.school_outlined,
-                          size: 64,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'No classes assigned',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
+              ? _buildEmptyState()
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                  itemCount: _classes.length + 1,
+                  padding: const EdgeInsets.all(20),
+                  itemCount: _classes.length,
                   itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'My Classes',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${_classes.length} ${_classes.length == 1 ? 'class' : 'classes'} assigned',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      );
-                    }
-                    
-                    final classData = _classes[index - 1];
-                    return _buildClassCard(classData);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 15),
+                      child: _buildPremiumClassCard(_classes[index]),
+                    );
                   },
                 ),
     );
   }
 
-  Widget _buildClassCard(Map<String, dynamic> classData) {
-    final className = classData['class_name'] ?? '';
-    final sectionName = classData['section_name'] ?? '';
-    final subject = classData['subject'] ?? '';
-    final studentCount = classData['student_count'] ?? 0;
-    final isFormTeacher = classData['is_form_teacher'] == true;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFE0E0E0),
-          width: 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ClassAttendanceScreen(
-                  classData: classData,
-                ),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    // Simple icon
-                    const Icon(Icons.school, color: Colors.black, size: 24),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '$className-$sectionName',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              if (isFormTeacher) ...[
-                                const SizedBox(width: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF2B9AFF), // Brand blue
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'Form',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '$subject • $studentCount Students',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 16,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    _buildMiniStat(
-                      (_attendanceStats[classData['section_id']]?['present'] ?? 0).toString(),
-                      'Present',
-                      const Color(0xFF10B981),
-                    ),
-                    const SizedBox(width: 10),
-                    _buildMiniStat(
-                      (_attendanceStats[classData['section_id']]?['late'] ?? 0).toString(),
-                      'Late',
-                      const Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 10),
-                    _buildMiniStat(
-                      (_attendanceStats[classData['section_id']]?['absent'] ?? 0).toString(),
-                      'Absent',
-                      const Color(0xFFEF4444),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ CLEAN Mini stat - No opacity effects
-  Widget _buildMiniStat(String value, String label, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFFE0E0E0),
-            width: 1,
-          ),
-        ),
+  Widget _buildEmptyState() {
+     return Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                shape: BoxShape.circle,
               ),
+              child: const Icon(Icons.class_outlined, size: 48, color: Color(0xFF9CA3AF)),
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
+            const SizedBox(height: 16),
+            const Text(
+              'No classes assigned',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF6B7280),
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF666666),
               ),
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
-  // Clean Dashboard Header
-  Widget _buildModernDashboardHeader(BuildContext context, AuthProvider authProvider) {
-    final now = DateTime.now();
-    final hour = now.hour;
-    String greeting;
-    if (hour < 12) {
-      greeting = 'Good Morning';
-    } else if (hour < 17) {
-      greeting = 'Good Afternoon';
-    } else {
-      greeting = 'Good Evening';
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          greeting,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF666666),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          authProvider.currentUser?.name ?? 'Teacher',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Clean Simple Stat Card
-  Widget _buildBeautifulStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-    required Gradient gradient, // Keep for compatibility but won't use
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFE0E0E0),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Simple icon - black or brand blue
-          Icon(
-            icon,
-            color: color == const Color(0xFF2B9AFF) ? const Color(0xFF2B9AFF) : Colors.black,
-            size: 24,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF666666),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ CLEAN Mini stat for attendance card
-  Widget _buildGradientMiniStat(String value, String label, IconData icon) {
-    return Column(
-      children: [
-        Icon(
-          icon,
-          color: Colors.white,
-          size: 24,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Calendar View
   Widget _buildCalendarView() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
     return AttendanceCalendarScreen(
       apiService: authProvider.apiService,
       classes: _classes,
     );
   }
 
-  // Students View
   Widget _buildStudentsView() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'All Students',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1F2937),
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Center(
-              child: Column(
-                children: [
-                  Icon(Icons.people, size: 80, color: Color(0xFFE5E7EB)),
-                  SizedBox(height: 16),
-                  Text(
-                    'Students List',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Coming soon...',
-                    style: TextStyle(color: Color(0xFF9CA3AF)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return const Center(child: Text('All Students View'));
   }
 
-  // Reports View - Navigate to Reports Screen
   Widget _buildReportsView() {
+    // Navigate immediately to reports screen
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.push(
+       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const ReportsScreen()),
-      );
-      setState(() => _selectedIndex = 0);
+      ).then((_) => setState(() => _selectedIndex = 0));
     });
     return const Center(child: CircularProgressIndicator());
   }
 
-  // Settings View - Navigate to Settings Screen
   Widget _buildSettingsView() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.push(
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const SettingsScreen()),
-      );
-      setState(() => _selectedIndex = 0);
+      ).then((_) => setState(() => _selectedIndex = 0));
     });
     return const Center(child: CircularProgressIndicator());
   }
 
+  String _getFormattedDate() {
+    final now = DateTime.now();
+    final months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    final weekDays = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+    ];
+    return '${weekDays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+  }
 }
+
+// 🌊 Modern Header Curve
+class _ModernHeaderClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+    path.lineTo(0, size.height - 60); // Start slightly higher
+
+    // Smooth quadratic bezier curve
+    var controlPoint = Offset(size.width / 2, size.height + 20); // Center, slightly below bottom
+    var endPoint = Offset(size.width, size.height - 60);
+
+    path.quadraticBezierTo(
+      controlPoint.dx, controlPoint.dy,
+      endPoint.dx, endPoint.dy,
+    );
+
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+

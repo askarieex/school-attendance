@@ -38,10 +38,66 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   int _absentCount = 0;
   int _holidaysCount = 0;
   
+  // 🔄 SCROLL SYNC CONTROLLERS
+  late ScrollController _verticalNameController;
+  late ScrollController _verticalGridController;
+  late ScrollController _horizontalHeaderController;
+  late ScrollController _horizontalGridController;
+  
+  // Prevent circular sync loops
+  bool _isSyncingName = false;
+  bool _isSyncingGrid = false;
+  bool _isSyncingHeader = false;
+  bool _isSyncingBody = false;
+
   @override
   void initState() {
     super.initState();
     Logger.info('📅 Calendar initialized with ${widget.classes.length} classes');
+    
+    // Initialize Scroll Controllers
+    _verticalNameController = ScrollController();
+    _verticalGridController = ScrollController();
+    _horizontalHeaderController = ScrollController();
+    _horizontalGridController = ScrollController();
+
+    // 🔗 SYNC LOGIC: Vertical
+    _verticalNameController.addListener(() {
+      if (_isSyncingName) return;
+      _isSyncingGrid = true;
+      if (_verticalNameController.hasClients && _verticalGridController.hasClients) {
+        _verticalGridController.jumpTo(_verticalNameController.offset);
+      }
+      _isSyncingGrid = false;
+    });
+
+    _verticalGridController.addListener(() {
+      if (_isSyncingGrid) return;
+      _isSyncingName = true;
+      if (_verticalGridController.hasClients && _verticalNameController.hasClients) {
+        _verticalNameController.jumpTo(_verticalGridController.offset);
+      }
+      _isSyncingName = false;
+    });
+    
+    // 🔗 SYNC LOGIC: Horizontal (Header + Body)
+    _horizontalHeaderController.addListener(() {
+       if (_isSyncingHeader) return;
+       _isSyncingBody = true;
+       if (_horizontalHeaderController.hasClients && _horizontalGridController.hasClients) {
+         _horizontalGridController.jumpTo(_horizontalHeaderController.offset);
+       }
+       _isSyncingBody = false;
+    });
+    
+    _horizontalGridController.addListener(() {
+       if (_isSyncingBody) return;
+       _isSyncingHeader = true;
+       if (_horizontalHeaderController.hasClients && _horizontalHeaderController.hasClients) {
+         _horizontalHeaderController.jumpTo(_horizontalGridController.offset);
+       }
+       _isSyncingHeader = false;
+    });
 
     if (widget.classes.isEmpty) {
       Logger.warning('⚠️ No classes available for calendar view');
@@ -50,6 +106,15 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       Logger.info('Selected section ID: $_selectedSectionId (${widget.classes[0]['class_name']}-${widget.classes[0]['section_name']})');
       _loadData();
     }
+  }
+  
+  @override
+  void dispose() {
+    _verticalNameController.dispose();
+    _verticalGridController.dispose();
+    _horizontalHeaderController.dispose();
+    _horizontalGridController.dispose();
+    super.dispose();
   }
   
   Future<void> _loadData() async {
@@ -142,13 +207,13 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
       Map<int, Map<int, String>> attendanceMap = {};
 
-      // ✅ Initialize attendance map
+      // ✅ Initialize attendance map with SAFE integer IDs
       for (var student in students) {
-        final studentId = student['id'];
+        final studentId = int.tryParse(student['id'].toString());
         if (studentId != null) {
           attendanceMap[studentId] = {};
         } else {
-          Logger.warning('Student with null ID found, skipping');
+          Logger.warning('Student with invalid ID found: ${student['id']}');
         }
       }
 
@@ -187,7 +252,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
             // Map logs to students and days
             for (var log in logs) {
-              final studentId = log['student_id'];
+              final studentId = int.tryParse(log['student_id'].toString()); // ✅ Force int
               final status = log['status'];
               final dateStr = log['date'] as String;
 
@@ -275,18 +340,20 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     }
   }
   
-  /// Calculate statistics
+  /// Calculate statistics - ✅ FIXED: Only count actual marked attendance
   void _calculateStats(Map<int, Map<int, String>> data, int daysInMonth) {
     _presentCount = 0;
     _lateCount = 0;
     _absentCount = 0;
     _holidaysCount = 0;
     
-    // Count holidays in this month
+    // Count holidays and Sundays in this month
     for (int day = 1; day <= daysInMonth; day++) {
-      if (_isHoliday(day)) _holidaysCount++;
+      if (_isHoliday(day) || _isSunday(day)) _holidaysCount++;
     }
     
+    // ✅ FIX: Only count actual marked statuses (P, L, A)
+    // Don't count S=Sunday, H=Holiday, LV=Leave, or empty as absent
     for (var studentData in data.values) {
       for (var status in studentData.values) {
         switch (status) {
@@ -297,8 +364,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
             _lateCount++;
             break;
           case 'A':
+            // Only count if status is explicitly 'A' (marked absent)
             _absentCount++;
             break;
+          // S, H, LV, empty are NOT counted as absent
         }
       }
     }
@@ -963,70 +1032,233 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   }
 
   Widget _buildCalendarGrid(int daysInMonth) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Day headers - More compact
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
-              children: [
-                const SizedBox(width: 130), // Student name column width
-                ...List.generate(daysInMonth, (index) {
-                  final day = index + 1;
-                  final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
-                  final dayName = DateFormat('EEE').format(date);
-                  final isSunday = date.weekday == DateTime.sunday;
-                  final isHoliday = _isHoliday(day);
+    // 🚀 Performance: Calculate exact width once
+    // 130 (Name) + (Days * 43) + Padding
+    final double gridWidth = 130.0 + (daysInMonth * 43.0) + 32.0;
 
-                  return Container(
-                    width: 40,
-                    margin: const EdgeInsets.only(right: 3),
-                    padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
-                    decoration: BoxDecoration(
-                      color: isSunday || isHoliday
-                          ? const Color(0xFFFEF3C7)
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          day.toString().padLeft(2, '0'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const ClampingScrollPhysics(), // Prevent bounce effect on horizontal
+          child: SizedBox(
+            height: constraints.maxHeight, // ✅ Forces full height, enabling virtualized list
+            width: gridWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Day headers
+                Container(
+                  height: 50, // Fixed height for header
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 130), // Alignment spacer
+                      ...List.generate(daysInMonth, (index) {
+                        final day = index + 1;
+                        final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+                        final dayName = DateFormat('EEE').format(date);
+                        final isSunday = date.weekday == DateTime.sunday;
+                        final isHoliday = _isHoliday(day);
+
+                        return Container(
+                          width: 40,
+                          margin: const EdgeInsets.only(right: 3),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
                             color: isSunday || isHoliday
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF1F2937),
+                                ? const Color(0xFFFEF3C7)
+                                : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ),
-                        Text(
-                          dayName,
-                          style: TextStyle(
-                            fontSize: 8,
-                            color: Colors.grey[600],
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                day.toString().padLeft(2, '0'),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: isSunday || isHoliday
+                                      ? const Color(0xFFF59E0B)
+                                      : const Color(0xFF1F2937),
+                                ),
+                              ),
+                              Text(
+                                dayName,
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ✅ ULTRA PERFORMANCE: Virtualized List with Fixed Height
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                    itemCount: _students.length,
+                    itemExtent: 72.0, // 🚀 FIXED: Matches new Clean Design row height
+                    cacheExtent: 1000, // Pre-render more screens for smoothness
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      return _buildStudentRow(_students[index], daysInMonth);
+                    },
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+        );
+      },
+    );
+  }
 
-          // ✅ ULTRA PERFORMANCE: Use ListView.builder for lazy loading (only builds visible rows)
+  Widget _buildStudentRow(Map<String, dynamic> student, int daysInMonth) {
+    // 🎨 DESIGN: Zebra Striping for readability
+    final index = _students.indexOf(student);
+    final isEven = index % 2 == 0;
+    final rowColor = isEven ? Colors.white : const Color(0xFFF9FAFB); // White / Light Grey
+    
+    final studentId = int.tryParse(student['id'].toString()) ?? 0;
+    final name = student['full_name']?.toString() ?? 'Unknown';
+    final rollNo = student['roll_number']?.toString() ?? 'N/A';
+    final percentage = _calculatePercentage(studentId);
+
+    // ✅ ULTRA PERFORMANCE: Cache row
+    return RepaintBoundary(
+      child: Container(
+        height: 72, // Compact & Clean
+        color: rowColor, // Background striping
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Student info - Flat & Clean, no heavy borders
+            _buildNameCell(student, index),
+            
+            // Attendance cells
+            Expanded( // Wrap attendance cells in Expanded to fill remaining width
+              child: _buildAttendanceRow(student, daysInMonth, index),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🟦 NAME CELL (Left Column) - Premium UI with Avatar
+  Widget _buildNameCell(Map<String, dynamic> student, int index) {
+    final name = student['full_name']?.toString() ?? 'Unknown';
+    final rollNo = student['roll_number']?.toString() ?? 'N/A';
+    final studentId = int.tryParse(student['id'].toString()) ?? 0;
+    final percentage = _calculatePercentage(studentId);
+    
+    // Colorful Avatar Initials
+    final String initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final List<Color> avatarColors = [
+      const Color(0xFF3B82F6), // Blue
+      const Color(0xFF10B981), // Green
+      const Color(0xFFF59E0B), // Amber
+      const Color(0xFF8B5CF6), // Violet
+      const Color(0xFFEC4899), // Pink
+      const Color(0xFFEF4444), // Red
+    ];
+    final avatarColor = avatarColors[index % avatarColors.length];
+    
+    final isEven = index % 2 == 0;
+    
+    return Container(
+      width: 150, // Fixed width for the name cell
+      height: 72, // Match row height
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: isEven ? Colors.white : const Color(0xFFF8FAFC), // Zebra
+        border: Border(
+          right: BorderSide(color: Colors.grey.shade200, width: 1), // Separator
+        ),
+      ),
+      child: Row(
+        children: [
+          // Avatar
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: avatarColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initials,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: avatarColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          
+          // Name & Stats
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              itemCount: _students.length,
-              itemBuilder: (context, index) {
-                return _buildStudentRow(_students[index], daysInMonth);
-              },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11, // Sized to fit
+                    color: Color(0xFF1F2937),
+                    letterSpacing: -0.2,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    // Percentage Pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: _getPercentageColor(percentage).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        '${percentage.toInt()}%',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: _getPercentageColor(percentage),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    // Roll No - Flexible to prevent overflow
+                    Flexible(
+                      child: Text(
+                        '#$rollNo',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.grey[500],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -1034,132 +1266,117 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     );
   }
 
-  Widget _buildStudentRow(Map<String, dynamic> student, int daysInMonth) {
-    final studentId = student['id'];
-    final name = student['full_name']?.toString() ?? 'Unknown';  // ✅ FIX: Handle null values safely
-    final rollNo = student['roll_number']?.toString() ?? 'N/A';  // ✅ FIX: Handle null values safely
-    final percentage = _calculatePercentage(studentId);
+  // 🟧 ATTENDANCE ROW (Right Grid)
+  Widget _buildAttendanceRow(Map<String, dynamic> student, int daysInMonth, int index) {
+    final studentId = int.tryParse(student['id'].toString()) ?? 0;
+    final name = student['full_name']?.toString() ?? 'Unknown';
+    
+    final isEven = index % 2 == 0;
+    const double cellWidth = 46.0;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      height: 72, // Match row height
+      color: isEven ? Colors.white : const Color(0xFFF8FAFC), // Match Name Column
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Student info - More compact
-          // ✅ ULTRA PERFORMANCE: Removed shadow, using border instead
-          Container(
-            width: 130,
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFFE5E7EB),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFF1F2937),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Roll: $rollNo',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _getPercentageColor(percentage),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${percentage.toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        children: List.generate(daysInMonth, (dIndex) {
+          final day = dIndex + 1;
+          final status = _attendanceData[studentId]?[day] ?? '';
           
-          // Attendance boxes - Compact & tap-friendly
-          ...List.generate(daysInMonth, (index) {
-            final day = index + 1;
-            final status = _attendanceData[studentId]?[day] ?? '';
+          final selectedDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+          final today = DateTime.now();
+          final todayDate = DateTime(today.year, today.month, today.day);
+          final isFutureDate = selectedDate.isAfter(todayDate);
 
-            // ✅ Check if date is in the future
-            final selectedDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
-            final today = DateTime.now();
-            final todayDate = DateTime(today.year, today.month, today.day);
-            final isFutureDate = selectedDate.isAfter(todayDate);
-
-            // ✅ ULTRA PERFORMANCE: Wrap in RepaintBoundary to isolate repaints
-            return RepaintBoundary(
-              child: GestureDetector(
-                onTap: () => _editAttendance(studentId, day, name),
-                child: Container(
-                  width: 40,
-                  height: 48,
-                  margin: const EdgeInsets.only(right: 3),
-                  // ✅ ULTRA PERFORMANCE: Removed shadow completely
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(status),
-                    borderRadius: BorderRadius.circular(10),
-                    border: isFutureDate && status.isEmpty
-                        ? Border.all(
-                            color: const Color.fromRGBO(158, 158, 158, 0.4),
-                            width: 1,
-                            style: BorderStyle.solid,
-                          )
-                        : status.isEmpty
-                            ? Border.all(
-                                color: const Color(0xFFE5E7EB),
-                                width: 1,
-                              )
-                            : null,
-                  ),
-                  child: Center(
-                    child: isFutureDate && status.isEmpty
-                        ? const Opacity(
-                            opacity: 0.3,
-                            child: Icon(
-                              Icons.lock_outline,
-                              size: 14,
-                              color: Colors.grey,
-                            ),
-                          )
-                        : Text(
-                            status,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                  ),
+          return GestureDetector(
+            onTap: () {
+              // Haptic feedback for premium feel
+              // HapticFeedback.selectionClick(); // Requires import
+              _editAttendance(studentId, day, name);
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: cellWidth,
+              decoration: BoxDecoration(
+                border: Border(
+                  right: BorderSide(color: Colors.grey.shade100, width: 0.5),
                 ),
               ),
-            );
-          }),
-        ],
+              child: Center(
+                child: _buildStatusBadge(status, isFutureDate),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  // 🎨 COMPONENT: New "Soft" Status Badge
+  Widget _buildStatusBadge(String status, bool isFuture) {
+    if (isFuture && status.isEmpty) {
+      return Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+
+    if (status.isEmpty) {
+      return const SizedBox(); // Empty cell
+    }
+
+    Color color;
+    Color bgColor;
+    String text = status;
+
+    switch (status) {
+      case 'P':
+        color = const Color(0xFF059669); // Emerald 600
+        bgColor = const Color(0xFFECFDF5); // Emerald 50
+        break;
+      case 'L':
+        color = const Color(0xFFD97706); // Amber 600
+        bgColor = const Color(0xFFFFFBEB); // Amber 50
+        break;
+      case 'A':
+        color = const Color(0xFFDC2626); // Red 600
+        bgColor = const Color(0xFFFEF2F2); // Red 50
+        break;
+      case 'S':
+        color = const Color(0xFF4B5563); // Grey 600
+        bgColor = const Color(0xFFF3F4F6); // Grey 100
+        break;
+      case 'H':
+        color = const Color(0xFF7C3AED); // Violet 600
+        bgColor = const Color(0xFFF5F3FF); // Violet 50
+        break;
+      case 'LV':
+        color = const Color(0xFF2563EB); // Blue 600
+        bgColor = const Color(0xFFEFF6FF); // Blue 50
+        break;
+      default:
+        color = Colors.black;
+        bgColor = Colors.grey.shade100;
+    }
+
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8), // Soft square
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
       ),
     );
   }

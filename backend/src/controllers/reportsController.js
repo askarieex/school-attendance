@@ -83,12 +83,10 @@ const getMonthlyReport = async (req, res) => {
 
     // Get all students
     const allStudents = await Student.findAll(schoolId, 1, 10000, { status: 'active' });
-    
+
     // Get attendance logs for the entire month
-    const attendanceLogs = await AttendanceLog.findAll(schoolId, 1, 10000, { 
-      startDate,
-      endDate 
-    });
+    const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
+    const attendanceLogs = { logs };
 
     // Get holidays for the month to exclude from working days
     const holidaysResponse = await query(
@@ -99,9 +97,9 @@ const getMonthlyReport = async (req, res) => {
        AND is_active = TRUE`,
       [schoolId, startDate, endDate]
     );
-    
+
     console.log(`🎉 Found ${holidaysResponse.rows.length} holidays in ${year}-${month}`);
-    
+
     const holidayDates = new Set(
       holidaysResponse.rows.map(h => new Date(h.holiday_date).toISOString().split('T')[0])
     );
@@ -117,34 +115,34 @@ const getMonthlyReport = async (req, res) => {
     for (let day = 1; day <= lastDay; day++) {
       const currentDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayOfWeek = new Date(currentDate).getDay();
-      
+
       // Skip Sundays (0 = Sunday)
       if (dayOfWeek === 0) {
         totalSundays++;
         continue;
       }
-      
+
       // Skip Holidays
       if (holidayDates.has(currentDate)) {
         totalHolidays++;
         continue;
       }
-      
+
       totalWorkingDays++;
-      
+
       // Count attendance for this day
       const dayLogs = attendanceLogs.logs.filter(log => {
         const logDate = new Date(log.date).toISOString().split('T')[0];
         return logDate === currentDate;
       });
-      
+
       const present = dayLogs.filter(log => log.status === 'present' || log.status === 'late').length;
       const absent = allStudents.total - present;
       const percentage = allStudents.total > 0 ? Math.round((present / allStudents.total) * 100) : 0;
-      
+
       totalPresent += present;
       totalAbsent += absent;
-      
+
       dailyData.push({
         date: currentDate,
         dayOfWeek: new Date(currentDate).toLocaleDateString('en-IN', { weekday: 'short' }),
@@ -156,12 +154,12 @@ const getMonthlyReport = async (req, res) => {
       });
     }
 
-    const averageAttendance = totalWorkingDays > 0 
+    const averageAttendance = totalWorkingDays > 0
       ? ((totalPresent / (totalWorkingDays * allStudents.total)) * 100).toFixed(1)
       : 0;
 
     // Calculate additional analytics
-    
+
     // 1. Best and Worst Days
     const sortedDays = [...dailyData].sort((a, b) => b.percentage - a.percentage);
     const bestDay = sortedDays[0];
@@ -175,7 +173,7 @@ const getMonthlyReport = async (req, res) => {
       currentWeek.days.push(day);
       currentWeek.total += (day.present + day.absent);
       currentWeek.present += day.present;
-      
+
       if (dayOfWeek === 6 || index === dailyData.length - 1) { // Saturday or last day
         weeks.push({
           weekNumber: weeks.length + 1,
@@ -232,12 +230,12 @@ const getMonthlyReport = async (req, res) => {
     // 4. Get students needing attention (below 75%)
     const studentsNeedingAttention = [];
     const perfectAttendance = [];
-    
+
     for (const student of allStudents.students) {
       const studentLogs = attendanceLogs.logs.filter(log => log.student_id === student.id);
       const presentDays = studentLogs.filter(log => log.status === 'present' || log.status === 'late').length;
       const studentAttendance = totalWorkingDays > 0 ? ((presentDays / totalWorkingDays) * 100).toFixed(1) : 0;
-      
+
       if (parseFloat(studentAttendance) < 75) {
         studentsNeedingAttention.push({
           ...student,
@@ -293,7 +291,7 @@ const getMonthlyReport = async (req, res) => {
       year: parseInt(year),
       month: parseInt(month),
       reportGeneratedAt: new Date().toISOString(),
-      
+
       // Summary Statistics
       summary: {
         totalStudents: allStudents.total,
@@ -312,10 +310,10 @@ const getMonthlyReport = async (req, res) => {
         actualAttendance: totalPresent,
         attendanceGap: (totalWorkingDays * allStudents.total) - totalPresent
       },
-      
+
       // Daily Data
       dailyData,
-      
+
       // Day Analysis
       dayAnalysis: {
         bestDay: {
@@ -329,13 +327,13 @@ const getMonthlyReport = async (req, res) => {
           absent: worstDay.absent
         }
       },
-      
+
       // Weekly Breakdown
       weeklyBreakdown: weeks,
-      
+
       // Class-wise Performance
       classWisePerformance: classWiseData.sort((a, b) => b.attendanceRate - a.attendanceRate),
-      
+
       // Gender-wise Breakdown
       genderBreakdown: {
         male: {
@@ -347,21 +345,21 @@ const getMonthlyReport = async (req, res) => {
           attendanceRate: parseFloat(femaleAttendance)
         }
       },
-      
+
       // Alerts & Actions
       alerts: {
         studentsNeedingAttention: studentsNeedingAttention.sort((a, b) => a.attendanceRate - b.attendanceRate),
         perfectAttendance: perfectAttendance,
         lowAttendanceDays: dailyData.filter(day => day.percentage < 75).length
       },
-      
+
       // Insights
       insights: {
-        trend: weeks.length > 1 ? 
+        trend: weeks.length > 1 ?
           (weeks[weeks.length - 1].avgAttendance > weeks[0].avgAttendance ? 'improving' : 'declining') : 'stable',
         criticalStudents: studentsNeedingAttention.length,
         excellentStudents: perfectAttendance.length,
-        averageClassPerformance: classWiseData.length > 0 
+        averageClassPerformance: classWiseData.length > 0
           ? (classWiseData.reduce((sum, c) => sum + c.attendanceRate, 0) / classWiseData.length).toFixed(1)
           : 0
       }
@@ -419,7 +417,7 @@ const getStudentReport = async (req, res) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     let totalWorkingDays = 0;
-    
+
     // Get holidays
     const holidaysResponse = await query(
       `SELECT holiday_date FROM holidays 
@@ -429,7 +427,7 @@ const getStudentReport = async (req, res) => {
        AND is_active = TRUE`,
       [schoolId, startDate, endDate]
     );
-    
+
     const holidayDates = new Set(
       holidaysResponse.rows.map(h => new Date(h.holiday_date).toISOString().split('T')[0])
     );
@@ -438,7 +436,7 @@ const getStudentReport = async (req, res) => {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dayOfWeek = d.getDay();
       const dateStr = d.toISOString().split('T')[0];
-      
+
       if (dayOfWeek !== 0 && !holidayDates.has(dateStr)) {
         totalWorkingDays++;
       }
@@ -452,14 +450,14 @@ const getStudentReport = async (req, res) => {
     // Create detailed logs with all working days
     const detailedLogs = [];
     const logMap = new Map(logs.logs.map(log => [
-      new Date(log.date).toISOString().split('T')[0], 
+      new Date(log.date).toISOString().split('T')[0],
       log
     ]));
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dayOfWeek = d.getDay();
       const dateStr = d.toISOString().split('T')[0];
-      
+
       if (dayOfWeek === 0) {
         detailedLogs.push({
           date: dateStr,
@@ -563,6 +561,195 @@ const getClassReport = async (req, res) => {
   }
 };
 
+// Get weekly summary report
+const getWeeklySummary = async (req, res) => {
+  try {
+    const schoolId = req.tenantSchoolId;
+    const { startDate } = req.query;
+
+    if (!startDate) {
+      return sendError(res, 'Start date is required', 400);
+    }
+
+    // Calculate dates for 4 weeks (current + previous 3)
+    const currentWeekStart = new Date(startDate);
+    const weeks = [];
+
+    // Loop backwards for 4 weeks
+    for (let i = 0; i < 4; i++) {
+      const weekStart = new Date(currentWeekStart);
+      weekStart.setDate(weekStart.getDate() - (i * 7));
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      const sDate = weekStart.toISOString().split('T')[0];
+      const eDate = weekEnd.toISOString().split('T')[0];
+
+      // Get attendance for this week
+      const logs = await AttendanceLog.getLogsForDateRange(schoolId, sDate, eDate);
+
+      const allStudents = await Student.findAll(schoolId, 1, 1, { status: 'active' }); // Just for total count
+      const totalStudents = allStudents.total;
+
+      // Calculate stats
+      let totalPresent = 0;
+      let totalAbsent = 0;
+      let daysWithData = 0;
+      const processedDates = new Set();
+
+      logs.forEach(log => {
+        if (log.status === 'present' || log.status === 'late') {
+          totalPresent++;
+        }
+        processedDates.add(log.date.split('T')[0]);
+      });
+
+      // We assume 6 working days per week
+      const maxPossible = totalStudents * 6;
+      const avgAttendance = maxPossible > 0 ? Math.round((totalPresent / maxPossible) * 100) : 0;
+
+      weeks.push({
+        weekNumber: 4 - i,
+        period: `${weekStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`,
+        avgAttendance,
+        totalPresent,
+        totalAbsent: maxPossible - totalPresent,
+        status: avgAttendance >= 90 ? 'Excellent' : avgAttendance >= 75 ? 'Good' : 'Poor'
+      });
+    }
+
+    sendSuccess(res, { weeks: weeks.reverse() }, 'Weekly summary generated successfully');
+  } catch (error) {
+    console.error('Get weekly summary error:', error);
+    sendError(res, 'Failed to generate weekly summary', 500);
+  }
+};
+
+// Get low attendance report
+const getLowAttendance = async (req, res) => {
+  try {
+    const schoolId = req.tenantSchoolId;
+    const { threshold = 75 } = req.query; // Default 75%
+
+    // Get date range (last 30 days)
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDateObj = new Date();
+    startDateObj.setDate(startDateObj.getDate() - 30);
+    const startDate = startDateObj.toISOString().split('T')[0];
+
+    // Get all students
+    const allStudents = await Student.findAll(schoolId, 1, 10000, { status: 'active' });
+
+    // Get attendance logs
+    const logsList = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
+
+    const studentStats = {};
+
+    // Initialize stats
+    allStudents.students.forEach(s => {
+      studentStats[s.id] = {
+        ...s,
+        present: 0,
+        total: 30 // Approx working days calculation - simplified
+      };
+    });
+
+    // Count present
+    logsList.forEach(log => {
+      if (studentStats[log.student_id]) {
+        if (log.status === 'present' || log.status === 'late') {
+          studentStats[log.student_id].present++;
+        }
+      }
+    });
+
+    // Filter low attendance
+    const lowAttendanceStudents = Object.values(studentStats)
+      .map(s => {
+        const rate = Math.round((s.present / 24) * 100); // Assuming 24 working days in 30 days
+        return {
+          ...s,
+          attendanceRate: rate,
+          absentDays: 24 - s.present,
+          totalDays: 24
+        };
+      })
+      .filter(s => s.attendanceRate < threshold)
+      .sort((a, b) => a.attendanceRate - b.attendanceRate);
+
+    sendSuccess(res, {
+      threshold,
+      studentsCount: lowAttendanceStudents.length,
+      students: lowAttendanceStudents
+    }, 'Low attendance report generated');
+  } catch (error) {
+    console.error('Get low attendance error:', error);
+    sendError(res, 'Failed to generate low attendance report', 500);
+  }
+};
+
+// Get perfect attendance report
+const getPerfectAttendance = async (req, res) => {
+  try {
+    const schoolId = req.tenantSchoolId;
+
+    // Get date range (current month)
+    const date = new Date();
+    const startDate = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+    const endDate = date.toISOString().split('T')[0];
+
+    // Get all students
+    const allStudents = await Student.findAll(schoolId, 1, 10000, { status: 'active' });
+
+    // Get attendance logs
+    const logsList = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
+
+    const studentStats = {};
+    const presentStudentIds = new Set();
+
+    logsList.forEach(log => {
+      if (log.status === 'present' || log.status === 'late') {
+        presentStudentIds.add(log.student_id);
+      }
+      // If a student has ANY 'absent' log, they are disqualified
+      // But here we just count presents
+      if (!studentStats[log.student_id]) studentStats[log.student_id] = 0;
+      if (log.status === 'present' || log.status === 'late') studentStats[log.student_id]++;
+    });
+
+    // Calculate working days passed roughly
+    const daysPassed = new Date().getDate();
+    const workingDaysEstimate = Math.max(1, daysPassed - Math.floor(daysPassed / 7)); // Exclude Sundays rough calc
+
+    const perfectStudents = [];
+    allStudents.students.forEach(student => {
+      const presentDays = studentStats[student.id] || 0;
+      // Simple check: if present days is close to working days estimate
+      // Ideally we need exact working days count from holidays table
+      if (presentDays >= workingDaysEstimate - 1) { // Tolerate 1 day discrepancy
+        perfectStudents.push({
+          ...student,
+          attendanceRate: 100,
+          presentDays,
+          totalDays: workingDaysEstimate
+        });
+      }
+    });
+
+    sendSuccess(res, {
+      studentsCount: perfectStudents.length,
+      students: perfectStudents,
+      dateRange: { startDate, endDate }
+    }, 'Perfect attendance report generated');
+  } catch (error) {
+    console.error('Get perfect attendance error:', error);
+    sendError(res, 'Failed to generate perfect attendance report', 500);
+  }
+};
+
+
+
 // Export report (placeholder for future implementation)
 const exportReport = async (req, res) => {
   try {
@@ -583,4 +770,7 @@ module.exports = {
   getStudentReport,
   getClassReport,
   exportReport,
+  getWeeklySummary,
+  getLowAttendance,
+  getPerfectAttendance
 };

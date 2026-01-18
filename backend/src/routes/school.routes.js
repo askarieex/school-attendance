@@ -107,6 +107,15 @@ router.get('/reports/student/:studentId', reportsController.getStudentReport);
 // GET /api/v1/school/reports/class/:classId
 router.get('/reports/class/:classId', reportsController.getClassReport);
 
+// GET /api/v1/school/reports/weekly
+router.get('/reports/weekly', reportsController.getWeeklySummary);
+
+// GET /api/v1/school/reports/low-attendance
+router.get('/reports/low-attendance', reportsController.getLowAttendance);
+
+// GET /api/v1/school/reports/perfect-attendance
+router.get('/reports/perfect-attendance', reportsController.getPerfectAttendance);
+
 // GET /api/v1/school/reports/export/:type
 router.get('/reports/export/:type', reportsController.exportReport);
 
