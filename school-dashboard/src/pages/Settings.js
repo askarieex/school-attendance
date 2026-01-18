@@ -509,32 +509,59 @@ const Settings = () => {
             {activeTab === 'profile' && (
               <form onSubmit={handleSaveProfile}>
 
+                {/* Floating Toast Notification */}
+                {successMessage && (
+                  <div className="toast-notification success">
+                    <FiSave />
+                    {successMessage}
+                  </div>
+                )}
+
                 {/* School Logo Section */}
                 <div className="settings-section">
                   <h3 className="section-title">School Logo</h3>
                   <div className="logo-upload-wrapper">
-                    <div className="logo-preview">
+                    <div className="logo-preview-container">
                       {schoolProfile.logoUrl ? (
-                        <div
-                          className="logo-image"
-                          style={{ backgroundImage: `url(${process.env.REACT_APP_API_URL}${schoolProfile.logoUrl})` }}
-                        ></div>
-                      ) : (
-                        <div className="logo-placeholder">
-                          <FiHome size={32} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="logo-upload-info">
-                      <label className="btn btn-secondary btn-sm">
-                        Change Logo
-                        <input
-                          type="file"
-                          accept="image/png, image/jpeg"
-                          onChange={handleLogoUpload}
-                          hidden
+                        <img
+                          src={`${process.env.REACT_APP_API_URL.replace(/\/api\/v1\/?$/, '')}${schoolProfile.logoUrl.startsWith('/') ? '' : '/'}${schoolProfile.logoUrl}`}
+                          alt="School Logo"
+                          className="logo-img-preview"
+                          onError={(e) => {
+                            console.error('Image load failed:', e.target.src);
+                            e.target.onerror = null;
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
                         />
-                      </label>
+                      ) : null}
+                      {/* Fallback placed adjacent for manual toggle or if no url */}
+                      <div className="logo-placeholder" style={{ display: schoolProfile.logoUrl ? 'none' : 'flex' }}>
+                        <FiHome size={32} />
+                      </div>
+                    </div>
+
+                    <div className="logo-upload-info">
+                      <div className="logo-actions">
+                        <label className="btn btn-secondary btn-sm">
+                          Change Logo
+                          <input
+                            type="file"
+                            accept="image/png, image/jpeg"
+                            onChange={handleLogoUpload}
+                            hidden
+                          />
+                        </label>
+                        {schoolProfile.logoUrl && (
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm text-danger"
+                            onClick={() => setSchoolProfile({ ...schoolProfile, logoUrl: '' })}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                       <p className="text-muted">
                         Recommended size: 200x200px. Max size: 2MB.<br />
                         Formats: JPG, PNG

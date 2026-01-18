@@ -169,8 +169,16 @@ export const usersAPI = {
 };
 
 // Platform Statistics
+// Database Explorer APIs
+export const databaseAPI = {
+  getTables: () => api.get('/super/database/tables'),
+  getTableData: (tableName, params) => api.get(`/super/database/tables/${tableName}`, { params }),
+};
+
 export const statsAPI = {
   getPlatformStats: () => api.get('/super/stats'),
+  getRevenueStats: () => api.get('/super/stats/revenue'),
 };
+
 
 export default api;

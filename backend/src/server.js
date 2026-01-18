@@ -26,7 +26,7 @@ if (process.env.JWT_SECRET.length < 32) {
 
 // Check against common weak secrets
 const weakSecrets = [
-  'secret', 'jwt_secret', 'your_secret_here', 'change_me', 
+  'secret', 'jwt_secret', 'your_secret_here', 'change_me',
   'your_jwt_secret', 'jwt', 'token', 'password', 'secret123',
   'mysecret', 'jwtsecret', 'secretkey', 'key', 'mykey'
 ];
@@ -45,7 +45,7 @@ if (process.env.JWT_REFRESH_SECRET) {
     console.warn('⚠️  WARNING: JWT_REFRESH_SECRET is same as JWT_SECRET');
     console.warn('   Best practice: Use different secrets for access and refresh tokens');
   }
-  
+
   if (process.env.JWT_REFRESH_SECRET.length < 32) {
     console.error('❌ FATAL SECURITY ERROR: JWT_REFRESH_SECRET is too weak!');
     process.exit(1);
@@ -71,6 +71,8 @@ const iclockRoutes = require('./routes/iclock');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const subjectRoutes = require('./routes/subject.routes');
 const autoAbsenceRoutes = require('./routes/autoAbsence.routes');
+const databaseRoutes = require('./routes/database.routes');
+
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -214,6 +216,8 @@ app.post('/', (req, res) => {
 // API routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/super`, superAdminRoutes);
+app.use(`/api/${API_VERSION}/super/database`, databaseRoutes);
+
 app.use(`/api/${API_VERSION}/teacher`, teacherRoutes);
 // IMPORTANT: Mount specific /school/* routes BEFORE /school to prevent route conflicts
 app.use(`/api/${API_VERSION}/school/holidays`, holidayRoutes);
@@ -318,26 +322,26 @@ const startServer = async () => {
 
     // ✅ SECURITY FIX: Add WebSocket authentication middleware
     const { verifyToken } = require('./utils/auth');
-    
+
     io.use((socket, next) => {
       try {
         // Get token from handshake
         const token = socket.handshake.auth.token;
-        
+
         if (!token) {
           console.warn('⚠️  WebSocket connection attempt without token');
           return next(new Error('Authentication required'));
         }
-        
+
         // Verify JWT token
         const decoded = verifyToken(token);
-        
+
         // Attach user info to socket
         socket.userId = decoded.userId;
         socket.userRole = decoded.role;
         socket.schoolId = decoded.schoolId;
         socket.userEmail = decoded.email;
-        
+
         console.log(`✅ WebSocket authenticated: ${socket.userEmail} (${socket.userRole})`);
         next();
       } catch (err) {
