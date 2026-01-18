@@ -38,7 +38,42 @@ const Settings = () => {
     logoUrl: ''
   });
 
-  // ... (lines 40-76) ...
+  // School Timings
+  const [schoolTimings, setSchoolTimings] = useState({
+    schoolOpenTime: '08:00',
+    schoolCloseTime: '14:00',
+    lateThresholdMinutes: 15,
+    workingDays: 'Mon-Sat',
+    weeklyHoliday: 'Sunday'
+  });
+
+  // Academic Year
+  const [academicYears, setAcademicYears] = useState([]);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
+  const [showYearModal, setShowYearModal] = useState(false);
+  const [yearFormData, setYearFormData] = useState({
+    yearName: '',
+    startDate: '',
+    endDate: '',
+    workingDays: 'Mon-Sat',
+    weeklyHoliday: 'Sunday'
+  });
+
+  // SMS Settings
+  const [smsSettings, setSmsSettings] = useState({
+    smsEnabled: false,
+    smsProvider: 'twilio',
+    smsApiKey: '',
+    smsBalance: 0,
+    sendOnAbsent: true,
+    sendOnLate: true,
+    sendDailySummary: false
+  });
+
+  useEffect(() => {
+    fetchSettings();
+    fetchAcademicYears();
+  }, []);
 
   const fetchSettings = async () => {
     try {
@@ -61,13 +96,44 @@ const Settings = () => {
           logoUrl: settings.logo_url || ''
         });
 
-        // ... (lines 98-115) ...
+        // Parse school timings
+        setSchoolTimings({
+          schoolOpenTime: settings.school_open_time || '08:00',
+          schoolCloseTime: settings.school_close_time || '14:00',
+          lateThresholdMinutes: settings.late_threshold_minutes || 15,
+          workingDays: settings.working_days || 'Mon-Sat',
+          weeklyHoliday: settings.weekly_holiday || 'Sunday'
+        });
+
+        // Parse SMS settings
+        setSmsSettings({
+          smsEnabled: settings.sms_enabled || false,
+          smsProvider: settings.sms_provider || 'twilio',
+          smsApiKey: settings.sms_api_key || '',
+          smsBalance: settings.sms_balance || 0,
+          sendOnAbsent: settings.send_on_absent ?? true,
+          sendOnLate: settings.send_on_late ?? true,
+          sendDailySummary: settings.send_daily_summary ?? false
+        });
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
       setError('Failed to load settings');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await academicYearAPI.getAll();
+      if (response.success) {
+        setAcademicYears(response.data || []);
+        const current = response.data.find(y => y.is_current);
+        setCurrentAcademicYear(current);
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
     }
   };
 
