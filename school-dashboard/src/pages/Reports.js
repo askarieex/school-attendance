@@ -15,6 +15,7 @@ import {
   FiActivity,
   FiSearch
 } from 'react-icons/fi';
+import { FaUsers, FaChartLine, FaClock, FaUserTimes } from 'react-icons/fa';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell,
