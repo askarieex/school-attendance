@@ -9,15 +9,16 @@ class Holiday {
       holidayName,
       holidayDate,
       holidayType = 'national',
-      description
+      description,
+      isRecurring = false // New field
     } = holidayData;
 
     const result = await query(
       `INSERT INTO holidays (
-        school_id, holiday_name, holiday_date, holiday_type, description
-      ) VALUES ($1, $2, $3, $4, $5)
+        school_id, holiday_name, holiday_date, holiday_type, description, is_recurring
+      ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *`,
-      [schoolId, holidayName, holidayDate, holidayType, description]
+      [schoolId, holidayName, holidayDate, holidayType, description, isRecurring]
     );
 
     return result.rows[0];
@@ -53,10 +54,26 @@ class Holiday {
       paramCount++;
     }
 
+    // For recurring holidays: match by month and day, ignoring year
+    // For non-recurring: match by year AND (month/day OR explicit year filter)
+    // This query returns:
+    //   1. All non-recurring holidays for the specified year
+    //   2. All recurring holidays (regardless of their stored year)
     const result = await query(
-      `SELECT * FROM holidays
+      `SELECT *, 
+        CASE WHEN is_recurring THEN 
+          TO_CHAR(holiday_date, 'MM-DD') 
+        ELSE 
+          TO_CHAR(holiday_date, 'YYYY-MM-DD') 
+        END as sort_key
+       FROM holidays
        ${whereClause}
-       ORDER BY holiday_date ASC`,
+       ORDER BY 
+         CASE WHEN is_recurring THEN 
+           EXTRACT(MONTH FROM holiday_date) * 100 + EXTRACT(DAY FROM holiday_date)
+         ELSE 
+           holiday_date 
+         END ASC`,
       params
     );
 
@@ -88,7 +105,8 @@ class Holiday {
       'holiday_date',
       'holiday_type',
       'description',
-      'is_active'
+      'is_active',
+      'is_recurring' // New field
     ];
 
     Object.keys(updates).forEach((key) => {

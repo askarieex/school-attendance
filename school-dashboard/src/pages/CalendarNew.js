@@ -27,7 +27,8 @@ const CalendarNew = () => {
     holidayName: '',
     holidayDate: '',
     holidayType: 'national',
-    description: ''
+    description: '',
+    isRecurring: false // New field for recurring holidays
   });
 
   const holidayTypes = [
@@ -68,15 +69,26 @@ const CalendarNew = () => {
   };
 
   const getHolidaysForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return holidays.filter(h => h.holiday_date === dateStr);
+    // ✅ FIX: Use local date format (en-CA gives YYYY-MM-DD) instead of toISOString()
+    // toISOString() converts to UTC which causes timezone shift issues in IST
+    const dateStr = date.toLocaleDateString('en-CA'); // Returns 'YYYY-MM-DD' in local time
+    const monthDay = dateStr.slice(5); // 'MM-DD' for recurring match
+
+    return holidays.filter(h => {
+      if (h.is_recurring) {
+        // For recurring holidays, match only month and day
+        return h.holiday_date.slice(5) === monthDay;
+      }
+      // For non-recurring, exact date match
+      return h.holiday_date === dateStr;
+    });
   };
 
   const isToday = (date) => {
     const today = new Date();
     return date.getDate() === today.getDate() &&
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
   };
 
   const handlePrevMonth = () => {
@@ -93,7 +105,8 @@ const CalendarNew = () => {
 
   const handleDateClick = (date) => {
     setSelectedDate(date);
-    setFormData({ ...formData, holidayDate: date.toISOString().split('T')[0] });
+    // ✅ FIX: Use local date format for form data
+    setFormData({ ...formData, holidayDate: date.toLocaleDateString('en-CA') });
     setShowModal(true);
   };
 
@@ -129,7 +142,8 @@ const CalendarNew = () => {
       holidayName: holiday.holiday_name,
       holidayDate: holiday.holiday_date,
       holidayType: holiday.holiday_type,
-      description: holiday.description || ''
+      description: holiday.description || '',
+      isRecurring: holiday.is_recurring || false
     });
     setShowModal(true);
   };
@@ -142,7 +156,8 @@ const CalendarNew = () => {
       holidayName: '',
       holidayDate: '',
       holidayType: 'national',
-      description: ''
+      description: '',
+      isRecurring: false
     });
   };
 
@@ -415,6 +430,20 @@ const CalendarNew = () => {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Add any details..."
                 />
+              </div>
+
+              {/* Recurring Checkbox */}
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  id="isRecurring"
+                  checked={formData.isRecurring}
+                  onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <label htmlFor="isRecurring" style={{ cursor: 'pointer', fontWeight: '500' }}>
+                  🔄 Repeat Yearly (e.g., Republic Day, Independence Day)
+                </label>
               </div>
 
               <div className="modal-footer-new">
