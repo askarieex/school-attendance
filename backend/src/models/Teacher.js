@@ -32,16 +32,26 @@ class Teacher {
 
     const userId = userResult.rows[0].id;
 
-    // Create teacher profile - Let DB trigger handle teacher_code
+    // Get school prefix for manual code generation
+    const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+    const schoolName = schoolResult.rows[0].name;
+    const prefix = schoolName.substring(0, 3).toUpperCase();
+
+    // Generate unique code: PRE-TIMESTAMP (e.g. MOH-172312)
+    // We use manual generation to bypass the DB trigger which is causing duplicate key errors
+    const teacherCode = `${prefix}-${Date.now().toString().slice(-6)}`;
+
+    // Create teacher profile - Manual teacher_code to bypass trigger
     const teacherResult = await query(
       `INSERT INTO teachers (
-        user_id, school_id, phone, date_of_birth, date_of_joining,
+        user_id, school_id, teacher_code, phone, date_of_birth, date_of_joining,
         subject_specialization, qualification, address, emergency_contact
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         userId,
         schoolId,
+        teacherCode,
         phone,
         dateOfBirth,
         dateOfJoining,
