@@ -596,7 +596,7 @@ const getClassReport = async (req, res) => {
   }
 };
 
-// Get weekly summary report
+// Get weekly summary report (Optimized)
 const getWeeklySummary = async (req, res) => {
   try {
     const schoolId = req.tenantSchoolId;
@@ -606,11 +606,29 @@ const getWeeklySummary = async (req, res) => {
       return sendError(res, 'Start date is required', 400);
     }
 
-    // Calculate dates for 4 weeks (current + previous 3)
+    // Calculate total range: 4 weeks back
     const currentWeekStart = new Date(startDate);
+    const rangeEndDate = new Date(currentWeekStart);
+    rangeEndDate.setDate(rangeEndDate.getDate() + 6); // End of current week
+
+    const rangeStartDate = new Date(currentWeekStart);
+    rangeStartDate.setDate(rangeStartDate.getDate() - 21); // Start of 4th week back
+
+    console.log(`📅 Generating weekly summary from ${rangeStartDate.toISOString()} to ${rangeEndDate.toISOString()}`);
+
+    // Fetch ALL logs for the 4-week period in one query
+    const logs = await AttendanceLog.getLogsForDateRange(
+      schoolId,
+      rangeStartDate.toISOString().split('T')[0],
+      rangeEndDate.toISOString().split('T')[0]
+    );
+
+    const allStudents = await Student.findAll(schoolId, 1, 1, { status: 'active' });
+    const totalStudents = allStudents.total;
+
     const weeks = [];
 
-    // Loop backwards for 4 weeks
+    // Process 4 weeks
     for (let i = 0; i < 4; i++) {
       const weekStart = new Date(currentWeekStart);
       weekStart.setDate(weekStart.getDate() - (i * 7));
@@ -618,35 +636,39 @@ const getWeeklySummary = async (req, res) => {
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
 
-      const sDate = weekStart.toISOString().split('T')[0];
-      const eDate = weekEnd.toISOString().split('T')[0];
+      const sTime = weekStart.getTime();
+      const eTime = weekEnd.getTime();
 
-      // Get attendance for this week
-      const logs = await AttendanceLog.getLogsForDateRange(schoolId, sDate, eDate);
-
-      const allStudents = await Student.findAll(schoolId, 1, 1, { status: 'active' }); // Just for total count
-      const totalStudents = allStudents.total;
+      // Filter logs for this week in memory
+      const weekLogs = logs.filter(log => {
+        const logTime = new Date(log.date).getTime();
+        return logTime >= sTime && logTime <= eTime;
+      });
 
       // Calculate stats
       let totalPresent = 0;
-      let totalAbsent = 0;
-      let daysWithData = 0;
-      const processedDates = new Set();
+      const presentSet = new Set();
 
-      logs.forEach(log => {
+      weekLogs.forEach(log => {
         if (log.status === 'present' || log.status === 'late') {
           totalPresent++;
+          presentSet.add(log.student_id + '_' + log.date); // Unique check-in per day
         }
-        processedDates.add(log.date.split('T')[0]);
       });
 
-      // We assume 6 working days per week
+      // Assume 6 working days
       const maxPossible = totalStudents * 6;
       const avgAttendance = maxPossible > 0 ? Math.round((totalPresent / maxPossible) * 100) : 0;
+
+      // Daily breakdown within week
+      // const dailyBreakdown = {};
+      // (Simple aggregation could be added here if needed for "very detailed" req)
 
       weeks.push({
         weekNumber: 4 - i,
         period: `${weekStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`,
+        startDate: weekStart.toISOString().split('T')[0],
+        endDate: weekEnd.toISOString().split('T')[0],
         avgAttendance,
         totalPresent,
         totalAbsent: maxPossible - totalPresent,
@@ -657,7 +679,7 @@ const getWeeklySummary = async (req, res) => {
     sendSuccess(res, { weeks: weeks.reverse() }, 'Weekly summary generated successfully');
   } catch (error) {
     console.error('Get weekly summary error:', error);
-    sendError(res, 'Failed to generate weekly summary', 500);
+    sendError(res, 'Failed to generate weekly summary: ' + error.message, 500);
   }
 };
 
