@@ -828,27 +828,27 @@ const Reports = () => {
         {/* Header Stats */}
         <div className="stats-grid">
           <StatCard
-            title="Total Students"
+            label="Total Students"
             value={classInfo?.totalStudents || studentList.length || 0}
-            icon={<FaUsers />}
+            icon={FaUsers}
             color="blue"
           />
           <StatCard
-            title="Attendance Rate"
+            label="Attendance Rate"
             value={`${stats.attendanceRate || 0}%`}
-            icon={<FaChartLine />}
+            icon={FaChartLine}
             color="green"
           />
           <StatCard
-            title="Usually Late"
+            label="Usually Late"
             value={stats.late || 0}
-            icon={<FaClock />}
+            icon={FaClock}
             color="orange"
           />
           <StatCard
-            title="Chronic Absent"
+            label="Chronic Absent"
             value={stats.absent || 0}
-            icon={<FaUserTimes />}
+            icon={FaUserTimes}
             color="red"
           />
         </div>
