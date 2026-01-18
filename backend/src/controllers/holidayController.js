@@ -50,7 +50,17 @@ const bulkImportHolidays = async (req, res) => {
   try {
     const { schoolId } = req.user;
     const { holidays } = req.body;
-    const imported = await Holiday.bulkCreate(holidays, schoolId);
+
+    // Map camelCase from frontend to snake_case expected by model
+    const mappedHolidays = holidays.map(h => ({
+      holiday_name: h.holidayName || h.holiday_name,
+      holiday_date: h.holidayDate || h.holiday_date,
+      holiday_type: h.holidayType || h.holiday_type || 'national',
+      description: h.description || null,
+      is_recurring: h.isRecurring || h.is_recurring || false
+    }));
+
+    const imported = await Holiday.bulkCreate(mappedHolidays, schoolId);
     sendSuccess(res, imported, `${imported.length} holidays imported successfully`, 201);
   } catch (error) {
     sendError(res, error.message, 500);
