@@ -11,6 +11,7 @@ import Users from './pages/Users';
 import SystemSettings from './pages/SystemSettings';
 import PasswordManagement from './pages/PasswordManagement';
 import AuditLogs from './pages/AuditLogs';
+import DatabaseExplorer from './pages/DatabaseExplorer';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
@@ -18,34 +19,35 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <Router>
-        <Routes>
-          {/* Public Route */}
-          <Route path="/login" element={<Login />} />
+          <Routes>
+            {/* Public Route */}
+            <Route path="/login" element={<Login />} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/*"
-            element={
-              <PrivateRoute>
-                <Layout>
-                  <Routes>
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/schools" element={<Schools />} />
-                    <Route path="/devices" element={<Devices />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/settings" element={<SystemSettings />} />
-                    <Route path="/password-management" element={<PasswordManagement />} />
-                    <Route path="/audit-logs" element={<AuditLogs />} />
-                    <Route path="/statistics" element={<div className="card"><h2>Statistics</h2><p>Coming soon...</p></div>} />
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  </Routes>
-                </Layout>
-              </PrivateRoute>
-            }
-          />
-        </Routes>
-      </Router>
-    </AuthProvider>
+            {/* Protected Routes */}
+            <Route
+              path="/*"
+              element={
+                <PrivateRoute>
+                  <Layout>
+                    <Routes>
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/schools" element={<Schools />} />
+                      <Route path="/devices" element={<Devices />} />
+                      <Route path="/users" element={<Users />} />
+                      <Route path="/settings" element={<SystemSettings />} />
+                      <Route path="/password-management" element={<PasswordManagement />} />
+                      <Route path="/audit-logs" element={<AuditLogs />} />
+                      <Route path="/database" element={<DatabaseExplorer />} />
+                      <Route path="/statistics" element={<div className="card"><h2>Statistics</h2><p>Coming soon...</p></div>} />
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    </Routes>
+                  </Layout>
+                </PrivateRoute>
+              }
+            />
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

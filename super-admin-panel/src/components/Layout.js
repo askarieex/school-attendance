@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiUsers, FiHardDrive, FiSettings, FiLogOut, FiBarChart2, FiShield, FiKey, FiFileText } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiUsers, FiHardDrive, FiSettings, FiLogOut, FiBarChart2, FiShield, FiKey, FiFileText, FiDatabase } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import './Layout.css';
 
@@ -18,6 +18,7 @@ const Layout = ({ children }) => {
     { path: '/password-management', icon: <FiKey />, label: 'Passwords' },
     { path: '/audit-logs', icon: <FiFileText />, label: 'Audit Logs' },
     { path: '/settings', icon: <FiSettings />, label: 'Settings' },
+    { path: '/database', icon: <FiDatabase />, label: 'Database' },
     { path: '/statistics', icon: <FiBarChart2 />, label: 'Statistics' },
   ];
 
