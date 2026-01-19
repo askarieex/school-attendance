@@ -124,22 +124,39 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   Future<void> _loadAttendanceStats(List<Map<String, dynamic>> classes) async {
     final stats = <int, Map<String, int>>{};
 
-    // ✅ NOTE: Sunday stats handled by backend - returns zeros appropriately
-    // No need for client-side Sunday check as caching and backend handle it efficiently
+    // Extract section IDs
+    final sectionIds = classes
+        .map((c) => c['section_id'] as int?)
+        .where((id) => id != null)
+        .cast<int>()
+        .toList();
 
-    for (final classData in classes) {
-      final sectionId = classData['section_id'] as int?;
-      if (sectionId == null) continue;
+    if (sectionIds.isEmpty) return;
 
-      try {
-        final todayStats = await _teacherService.getTodayAttendanceStats(sectionId);
-        stats[sectionId] = {
-          'present': todayStats['presentCount'] ?? 0,
-          'late': todayStats['lateCount'] ?? 0,
-          'absent': todayStats['absentCount'] ?? 0,
-        };
-      } catch (e) {
-        stats[sectionId] = {'present': 0, 'late': 0, 'absent': 0};
+    try {
+      // ✅ PERFORMANCE: Use BATCH API to fetch all stats in ONE request
+      // This saves N API calls (where N = number of classes)
+      final batchStats = await _teacherService.getBatchAttendanceStats(sectionIds);
+
+      // Map batch response to local stats format
+      batchStats.forEach((key, value) {
+        final sectionId = int.tryParse(key);
+        if (sectionId != null && value is Map) {
+          stats[sectionId] = {
+            'present': (value['present'] as int?) ?? 0,
+            'late': (value['late'] as int?) ?? 0,
+            'absent': (value['absent'] as int?) ?? 0,
+          };
+        }
+      });
+      
+      // If batch API fails/returns empty (e.g. backend not updated), we might have 0 stats
+      // but that's better than crashing.
+      
+    } catch (e) {
+      // Fallback to zeros on error
+      for (final id in sectionIds) {
+        stats[id] = {'present': 0, 'late': 0, 'absent': 0};
       }
     }
 

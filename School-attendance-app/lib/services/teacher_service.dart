@@ -1,4 +1,5 @@
 import 'api_service.dart';
+import '../config/api_config.dart';
 import '../utils/logger.dart';
 
 /// Teacher Service - Handles teacher-specific API calls
@@ -234,6 +235,9 @@ class TeacherService {
         'leaveToday': 0,
         'notMarkedToday': 0,
         'attendancePercentage': 100,
+        'attendancePercentage': 100,
+      };
+    }
   }
   
   /// Get attendance stats for multiple sections in one request
