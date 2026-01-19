@@ -634,6 +634,7 @@ const markManualAttendance = async (req, res) => {
     let calculatedStatus = status || 'present'; // Use provided status or default to present
 
     console.log(`📝 Marking attendance: student=${studentId}, date=${date}, checkInTime=${timeToUse}, initialStatus=${calculatedStatus}`);
+    console.log(`🔍 DEBUG: checkInDateTime being stored = "${checkInDateTime}"`);
 
     // ALWAYS auto-calculate if marking as "present" (regardless of what user selected)
     // Only skip auto-calculation for "absent" and "leave"
@@ -700,6 +701,7 @@ const markManualAttendance = async (req, res) => {
     );
 
     const attendanceLog = upsertResult.rows[0];
+    console.log(`🔍 DEBUG: Database returned check_in_time = "${attendanceLog.check_in_time}"`);
     const wasInserted = attendanceLog.inserted;
     const isUpdate = !wasInserted;
 
