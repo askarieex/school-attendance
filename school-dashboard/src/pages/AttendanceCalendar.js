@@ -194,7 +194,7 @@ const AttendanceCalendar = () => {
   const getStatusIcon = (status, day) => {
     // Check if this day is a holiday
     if (isHoliday(day)) {
-      return <span className="icon-holiday" title="Holiday">H</span>;
+      return "H";
     }
 
     // Check if this day is Sunday
@@ -377,7 +377,11 @@ const AttendanceCalendar = () => {
                       {days.length - studentStats.total}
                     </td>
                     {days.map(day => (
-                      <td key={day} className="day-cell">
+                      <td
+                        key={day}
+                        className={`day-cell ${isHoliday(day) ? 'holiday-cell' : ''}`}
+                        title={isHoliday(day) ? 'Holiday' : ''}
+                      >
                         {getStatusIcon(attendanceData[student.id]?.[day], day)}
                       </td>
                     ))}

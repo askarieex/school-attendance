@@ -299,6 +299,22 @@
   font-size: 18px;
 }
 
+/* ⚡ HOLIDAY CELL STYLING (NEW) */
+.holiday-cell {
+  background-color: #fff1f2 !important;
+  /* Very light red */
+  color: #e11d48 !important;
+  /* Red text */
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Ensure hover doesn't override holiday background too aggressively, or blend it */
+.calendar-table tbody tr:hover .holiday-cell {
+  background-color: #ffe4e6 !important;
+  /* Slightly darker on hover */
+}
+
 /* ===================================
    STATUS ICONS
    =================================== */
@@ -332,14 +348,14 @@
   display: inline-block;
 }
 
-.icon-holiday {
-  color: #e53e3e;
-  font-size: 16px;
-  font-weight: 700;
-  background: #fed7d7;
+/* ⚡ LEGEND ICON FOR HOLIDAY (NEW) */
+.legend-icon.icon-holiday {
+  color: #e11d48;
+  background-color: #fff1f2;
   padding: 4px 8px;
   border-radius: 4px;
-  display: inline-block;
+  font-weight: 700;
+  font-size: 14px;
 }
 
 /* Header Icons */
@@ -411,7 +427,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-calendar p {

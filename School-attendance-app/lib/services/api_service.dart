@@ -25,9 +25,9 @@ class ApiService {
   ApiService() {
     // ✅ CRITICAL: Create HttpClient with connection pooling
     final httpClient = HttpClient()
-      ..idleTimeout = const Duration(seconds: 30)  // Keep connections alive for 30s
-      ..connectionTimeout = const Duration(seconds: 15)
-      ..maxConnectionsPerHost = 5;  // Allow 5 parallel connections
+      ..idleTimeout = const Duration(seconds: 15) // ⚡ Increased to 15s to allow connection reuse during reading
+      ..connectionTimeout = const Duration(seconds: 30) // ⚡ Keep 30s for slow starts
+      ..maxConnectionsPerHost = 5;
 
     // Wrap in IOClient for use with http package API
     _client = IOClient(httpClient);
@@ -38,7 +38,7 @@ class ApiService {
       (_) => _cleanupExpiredCache(),
     );
     
-    Logger.info('API Service initialized with persistent connection pool');
+    Logger.info('API Service initialized with optimized connection settings');
   }
 
   // ✅ Cache Invalidation Method
@@ -75,7 +75,8 @@ class ApiService {
   Map<String, String> _getHeaders({bool requiresAuth = false}) {
     final headers = {
       'Content-Type': 'application/json',
-      'Connection': 'keep-alive',  // ✅ Explicit keep-alive header
+      // 'Connection': 'keep-alive', // ❌ Removed: Let HttpClient handle this. Explicit keep-alive can cause issues on aggressive mobile networks.
+      'User-Agent': 'SchoolAttendanceApp/1.0', // ✅ Added User-Agent to prevent blocking by some carriers
     };
     if (requiresAuth && _accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
@@ -136,14 +137,19 @@ class ApiService {
   }) async {
     try {
       return await _requestWithRetry(
-        () => _client.post(
-          Uri.parse('${ApiConfig.baseUrl}$endpoint'),
-          headers: _getHeaders(requiresAuth: requiresAuth),
-          body: jsonEncode(body),
-        ).timeout(
-          ApiConfig.receiveTimeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        ),
+        () async {
+          final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint');
+          final request = http.Request('POST', uri);
+          request.headers.addAll(_getHeaders(requiresAuth: requiresAuth));
+          request.body = jsonEncode(body);
+          
+          final streamedResponse = await _client.send(request).timeout(
+             ApiConfig.receiveTimeout,
+             onTimeout: () => throw TimeoutException('Request timed out'),
+          );
+          
+          return http.Response.fromStream(streamedResponse);
+        },
         requiresAuth: requiresAuth,
       );
     } catch (e) {

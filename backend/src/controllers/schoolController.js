@@ -627,7 +627,8 @@ const markManualAttendance = async (req, res) => {
 
     // Parse check-in time (if provided, otherwise use default 9 AM)
     const timeToUse = checkInTime || '09:00:00';
-    const checkInDateTime = new Date(`${date}T${timeToUse}`);
+    // ✅ Add IST timezone offset (+05:30) to ensure correct interpretation
+    const checkInDateTime = new Date(`${date}T${timeToUse}+05:30`);
 
     // AUTO-CALCULATE STATUS based on school settings
     let calculatedStatus = status || 'present'; // Use provided status or default to present

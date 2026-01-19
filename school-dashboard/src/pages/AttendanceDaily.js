@@ -135,12 +135,17 @@ const AttendanceDaily = () => {
       if (response.success && response.data) {
         response.data.forEach(holiday => {
           const holidayDate = new Date(holiday.holiday_date);
-          const day = holidayDate.getDate();
-          holidayMap[day] = {
-            name: holiday.holiday_name,
-            type: holiday.holiday_type
-          };
-          console.log(`🎉 Holiday added: Day ${day} - ${holiday.holiday_name}`);
+
+          // ✅ FIX: Only show holidays for the CURRENT viewing month
+          // The previous code showed ALL holidays for the year based on day number alone
+          if (holidayDate.getMonth() === currentMonth.getMonth()) {
+            const day = holidayDate.getDate();
+            holidayMap[day] = {
+              name: holiday.holiday_name,
+              type: holiday.holiday_type
+            };
+            console.log(`🎉 Holiday added: Day ${day} - ${holiday.holiday_name}`);
+          }
         });
       }
       setHolidays(holidayMap);
@@ -422,7 +427,11 @@ const AttendanceDaily = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return '-';
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata'  // Force IST display
+    });
   };
 
   const getCellContent = (studentId, day) => {
@@ -1024,7 +1033,7 @@ const AttendanceDaily = () => {
                         <div className="day-header-content">
                           <span className="day-number">{String(day).padStart(2, '0')}</span>
                           <span className="day-name">{getDayOfWeek(day)}</span>
-                          {holiday && !weekend && <FiSun className="holiday-icon" title={holiday.name} />}
+                          {/* {holiday && !weekend && <FiSun className="holiday-icon" title={holiday.name} />} */}
                         </div>
                       </th>
                     );
@@ -1078,10 +1087,11 @@ const AttendanceDaily = () => {
                         return (
                           <td
                             key={day}
-                            className={`day-cell ${isEditable ? 'day-cell-clickable' : 'day-cell-disabled'} ${hasAttendance ? 'has-attendance' : ''}`}
+                            className={`day-cell ${isEditable ? 'day-cell-clickable' : 'day-cell-disabled'} ${hasAttendance ? 'has-attendance' : ''} ${holiday && !weekend ? 'holiday-cell' : ''} ${weekend ? 'weekend-cell' : ''}`}
                             onClick={(e) => isEditable && handleCellClick(student.id, day, student, e)}
+                            title={holiday ? holiday.name : weekend ? 'Weekend' : ''}
                           >
-                            {/* ⚡ PERFORMANCE: Using pre-computed cell data */}
+                            {/* Show all badges including H (holiday) and S (weekend) as per legend */}
                             <span className={`badge-mark ${cellData.cssClass}`} title={cellData.title}>
                               {cellData.status}
                             </span>

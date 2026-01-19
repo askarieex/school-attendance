@@ -197,7 +197,8 @@ router.post(
 
       // Use provided checkInTime or default to 09:00:00
       const timeToUse = checkInTime || '09:00:00';
-      const checkInDateTime = `${date}T${timeToUse}`;
+      // ✅ Add IST timezone offset (+05:30) to ensure correct interpretation
+      const checkInDateTime = `${date}T${timeToUse}+05:30`;
 
       console.log(`📝 Marking attendance: student=${studentId}, date=${date}, status=${status}, time=${timeToUse}`);
 

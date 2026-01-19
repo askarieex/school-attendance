@@ -124,9 +124,15 @@ const CalendarNew = () => {
         const holidays = [];
 
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          // ✅ FIX: Use local date to avoid timezone shifts
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+
           holidays.push({
             holidayName: formData.holidayName,
-            holidayDate: d.toISOString().split('T')[0],
+            holidayDate: dateStr,
             holidayType: formData.holidayType,
             description: formData.description,
             isRecurring: formData.isRecurring
@@ -143,6 +149,50 @@ const CalendarNew = () => {
     } catch (error) {
       console.error('Error saving holiday:', error);
       alert('Failed to save holiday');
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    if (!window.confirm('🧹 This will find and remove duplicate holidays (same name & date). Are you sure?')) return;
+
+    setLoading(true);
+    let deletedCount = 0;
+
+    try {
+      const seen = new Set();
+      const duplicates = [];
+
+      // Identify duplicates
+      holidays.forEach(h => {
+        const key = `${h.holiday_date}-${h.holiday_name}`;
+        if (seen.has(key)) {
+          duplicates.push(h.id);
+        } else {
+          seen.add(key);
+        }
+      });
+
+      if (duplicates.length === 0) {
+        alert('✨ No duplicates found!');
+        setLoading(false);
+        return;
+      }
+
+      // Delete duplicates
+      // Note: We execute sequentially to avoid overwhelming the server
+      for (const id of duplicates) {
+        await holidaysAPI.delete(id);
+        deletedCount++;
+      }
+
+      alert(`✅ Cleaned up ${deletedCount} duplicate holidays!`);
+      fetchHolidays();
+
+    } catch (error) {
+      console.error('Error cleaning duplicates:', error);
+      alert('Error cleaning duplicates. Check console.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,6 +267,9 @@ const CalendarNew = () => {
           <p>Manage school holidays and events</p>
         </div>
         <div className="header-actions">
+          <button className="btn-secondary" onClick={handleCleanupDuplicates} title="Remove duplicate holidays" style={{ marginRight: '8px' }}>
+            🧹 Cleanup Duplicates
+          </button>
           <button className="btn-view" onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}>
             {viewMode === 'grid' ? <FiList /> : <FiGrid />}
             {viewMode === 'grid' ? 'List View' : 'Calendar View'}
