@@ -426,7 +426,24 @@ const AttendanceDaily = () => {
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '-';
-    // Backend now returns pre-formatted time string (e.g., "08:17 AM")
+
+    // If already formatted (e.g., "08:17 AM"), return as-is
+    if (timestamp.includes('AM') || timestamp.includes('PM')) {
+      return timestamp;
+    }
+
+    // Extract time directly from ISO string (e.g., "2026-01-19T08:25:00.0002")
+    // This avoids JavaScript Date parsing which causes timezone issues
+    const timeMatch = timestamp.match(/T(\d{2}):(\d{2})/);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = timeMatch[2];
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 becomes 12
+      return `${hours.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+    }
+
     return timestamp;
   };
 
