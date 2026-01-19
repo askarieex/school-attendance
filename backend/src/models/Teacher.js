@@ -320,9 +320,19 @@ class Teacher {
         const currentUserId = currentTeacherResult.rows[0]?.user_id;
         const existingUserId = existingFormTeacher.rows[0].form_teacher_id;
 
-        // Only throw error if it's a DIFFERENT teacher
+        // If it's a DIFFERENT teacher, auto-demote the previous form teacher
         if (currentUserId !== existingUserId) {
-          throw new Error('This section already has a form teacher. Please remove the existing form teacher first.');
+          console.log(`🔄 Section ${sectionId} already has form teacher (user_id: ${existingUserId}). Replacing with teacher ${teacherId} (user_id: ${currentUserId})`);
+
+          // Remove form teacher flag from the old teacher's assignment
+          await query(
+            `UPDATE teacher_class_assignments
+             SET is_form_teacher = FALSE, updated_at = CURRENT_TIMESTAMP
+             WHERE section_id = $1 AND is_form_teacher = TRUE`,
+            [sectionId]
+          );
+
+          console.log(`✅ Removed previous form teacher from section ${sectionId}`);
         }
       }
     }
