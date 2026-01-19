@@ -38,6 +38,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   int _absentCount = 0;
   int _holidaysCount = 0;
   
+  // ✅ PAGINATION: Show only 8 students per page for better performance
+  int _currentPage = 0;
+  static const int _studentsPerPage = 8;
+  
   // 🔄 SCROLL SYNC CONTROLLERS
   late ScrollController _verticalNameController;
   late ScrollController _verticalGridController;
@@ -385,6 +389,64 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     final month = _selectedMonth.month;
     final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
     return _holidays.contains(dateStr);
+  }
+  
+  // ✅ PAGINATION HELPERS
+  int get _totalPages => (_students.length / _studentsPerPage).ceil();
+  
+  List<Map<String, dynamic>> get _paginatedStudents {
+    final startIndex = _currentPage * _studentsPerPage;
+    final endIndex = (startIndex + _studentsPerPage).clamp(0, _students.length);
+    return _students.sublist(startIndex, endIndex);
+  }
+  
+  Widget _buildPaginationControls() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Previous Button
+          IconButton(
+            icon: const Icon(Icons.chevron_left, size: 28),
+            onPressed: _currentPage > 0
+                ? () => setState(() => _currentPage--)
+                : null,
+            color: _currentPage > 0 ? const Color(0xFF2563EB) : Colors.grey.shade400,
+          ),
+          const SizedBox(width: 8),
+          // Page indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '${_currentPage + 1} / $_totalPages',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Next Button
+          IconButton(
+            icon: const Icon(Icons.chevron_right, size: 28),
+            onPressed: _currentPage < _totalPages - 1
+                ? () => setState(() => _currentPage++)
+                : null,
+            color: _currentPage < _totalPages - 1 ? const Color(0xFF2563EB) : Colors.grey.shade400,
+          ),
+        ],
+      ),
+    );
   }
   
   /// Calculate student attendance percentage
@@ -988,7 +1050,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                   );
                 }).toList(),
                 onChanged: (value) {
-                  setState(() => _selectedSectionId = value);
+                  setState(() {
+                    _selectedSectionId = value;
+                    _currentPage = 0; // Reset pagination when changing section
+                  });
                   _loadData();
                 },
               ),
@@ -1100,17 +1165,26 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // ✅ ULTRA PERFORMANCE: Virtualized List with Fixed Height
+                // ✅ PAGINATION: Show 8 students per page for better performance
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    itemCount: _students.length,
-                    itemExtent: 72.0, // 🚀 FIXED: Matches new Clean Design row height
-                    cacheExtent: 1000, // Pre-render more screens for smoothness
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemBuilder: (context, index) {
-                      return _buildStudentRow(_students[index], daysInMonth);
-                    },
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          itemCount: _paginatedStudents.length,
+                          itemExtent: 72.0,
+                          cacheExtent: 500,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemBuilder: (context, index) {
+                            return _buildStudentRow(_paginatedStudents[index], daysInMonth);
+                          },
+                        ),
+                      ),
+                      // Pagination Controls
+                      if (_students.length > _studentsPerPage)
+                        _buildPaginationControls(),
+                    ],
                   ),
                 ),
               ],
@@ -1143,10 +1217,8 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
             // Student info - Flat & Clean, no heavy borders
             _buildNameCell(student, index),
             
-            // Attendance cells
-            Expanded( // Wrap attendance cells in Expanded to fill remaining width
-              child: _buildAttendanceRow(student, daysInMonth, index),
-            ),
+            // Attendance cells - NO Expanded, parent has horizontal scroll
+            _buildAttendanceRow(student, daysInMonth, index),
           ],
         ),
       ),
