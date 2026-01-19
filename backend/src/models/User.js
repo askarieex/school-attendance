@@ -227,6 +227,17 @@ class User {
 
     return result.rows[0];
   }
+  /**
+   * Permanently delete user
+   */
+  static async permanentDelete(id) {
+    const result = await query(
+      'DELETE FROM users WHERE id = $1 RETURNING id, email, full_name',
+      [id]
+    );
+
+    return result.rows[0];
+  }
 }
 
 module.exports = User;

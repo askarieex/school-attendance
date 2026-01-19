@@ -166,6 +166,7 @@ export const usersAPI = {
   create: (data) => api.post('/super/users', data),
   update: (id, data) => api.put(`/super/users/${id}`, data),
   delete: (id) => api.delete(`/super/users/${id}`),
+  permanentDelete: (id) => api.delete(`/super/users/${id}/permanent`),
 };
 
 // Platform Statistics

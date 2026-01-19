@@ -329,6 +329,36 @@ const deleteUser = async (req, res) => {
  * PLATFORM STATISTICS
  */
 
+// Permanently delete user
+const permanentDeleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if user exists
+    const user = await User.findById(id);
+
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    // Prevent deleting self (simple check)
+    if (req.user && parseInt(req.user.id) === parseInt(id)) {
+      return sendError(res, 'You cannot permanently delete your own account.', 400);
+    }
+
+    // Perform permanent deletion
+    const result = await User.permanentDelete(id);
+
+    sendSuccess(res, {
+      message: `User "${result?.full_name || 'Unknown'}" permanently deleted`,
+      user: result
+    }, 'User permanently deleted');
+  } catch (error) {
+    console.error('Permanent delete user error:', error);
+    sendError(res, 'Failed to permanently delete user: ' + error.message, 500);
+  }
+};
+
 // Get platform-wide statistics
 const getPlatformStats = async (req, res) => {
   try {
@@ -359,6 +389,7 @@ module.exports = {
   getUsers,
   createUser,
   deleteUser,
+  permanentDeleteUser,
 
   // Stats
   getPlatformStats,

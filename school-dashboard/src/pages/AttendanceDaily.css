@@ -1567,3 +1567,45 @@
   flex-direction: column;
   gap: 2px;
 }
+
+/* ===================================
+   LOADING BAR
+   =================================== */
+.attendance-loading-bar {
+  width: 100%;
+  height: 4px;
+  background-color: #f3f4f6;
+  position: relative;
+  overflow: hidden;
+  margin-top: -16px;
+  margin-bottom: 16px;
+  border-radius: 0 0 12px 12px;
+}
+
+.attendance-loading-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #4f46e5, #818cf8);
+  width: 30%;
+  animation: dataLoading 1.5s infinite ease-in-out;
+  border-radius: 4px;
+}
+
+@keyframes dataLoading {
+  0% {
+    left: -30%;
+    width: 30%;
+  }
+
+  50% {
+    left: 30%;
+    width: 60%;
+  }
+
+  100% {
+    left: 100%;
+    width: 10%;
+  }
+}

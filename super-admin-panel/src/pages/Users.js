@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEdit, FiTrash2, FiSearch, FiMail, FiShield, FiBriefcase } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiSearch, FiMail, FiShield, FiBriefcase, FiAlertTriangle } from 'react-icons/fi';
+import Pagination from '../components/Pagination';
 import { usersAPI, schoolsAPI } from '../utils/api';
 
 const Users = () => {
@@ -7,6 +8,12 @@ const Users = () => {
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10); // Show 10 users per page
+  const [hasMore, setHasMore] = useState(false);
+
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({
@@ -17,17 +24,39 @@ const Users = () => {
     role: 'school_admin',
   });
 
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState(null); // 'deactivate' or 'permanent'
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
     fetchUsers();
     fetchSchools();
-  }, []);
+  }, [page]); // Reload when page changes
+
+  // Reset to page 1 when searching
+  useEffect(() => {
+    setPage(1);
+    fetchUsers();
+  }, [searchTerm]);
 
   const fetchUsers = async () => {
     try {
-      const response = await usersAPI.getAll({ search: searchTerm });
+      setLoading(true);
+      const response = await usersAPI.getAll({
+        search: searchTerm,
+        page: page,
+        limit: limit
+      });
       if (response.success) {
         // Backend returns data as an array directly, not data.users
-        setUsers(response.data || []);
+        const fetchedUsers = response.data || [];
+        setUsers(fetchedUsers);
+
+        // Simple client-side check for "next page" availability
+        // If we got 'limit' number of items, there's likely more
+        setHasMore(fetchedUsers.length === limit);
       }
     } catch (error) {
       console.error('Failed to fetch users:', error);
@@ -71,15 +100,39 @@ const Users = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to deactivate this user?')) {
-      try {
-        await usersAPI.delete(id);
+  // Open delete options modal
+  const openDeleteModal = (user) => {
+    setUserToDelete(user);
+    setDeleteType(null);
+    setShowDeleteModal(true);
+  };
+
+  // Close delete modal
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setUserToDelete(null);
+    setDeleteType(null);
+    setIsDeleting(false);
+  };
+
+  // Perform the delete action
+  const performDelete = async () => {
+    if (!userToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      if (deleteType === 'deactivate') {
+        await usersAPI.delete(userToDelete.id);
         alert('User deactivated successfully');
-        fetchUsers();
-      } catch (error) {
-        alert('Failed to deactivate user');
+      } else if (deleteType === 'permanent') {
+        await usersAPI.permanentDelete(userToDelete.id);
+        alert(`User "${userToDelete.full_name}" permanently deleted!`);
       }
+      closeDeleteModal();
+      fetchUsers();
+    } catch (error) {
+      alert(error.message || 'Failed to delete user');
+      setIsDeleting(false);
     }
   };
 
@@ -224,7 +277,7 @@ const Users = () => {
                           <button
                             className="btn btn-danger"
                             style={{ padding: '6px 12px' }}
-                            onClick={() => handleDelete(user.id)}
+                            onClick={() => openDeleteModal(user)}
                           >
                             <FiTrash2 size={16} />
                           </button>
@@ -237,6 +290,17 @@ const Users = () => {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Pagination */}
+      {!loading && (users.length > 0 || page > 1) && (
+        <Pagination
+          currentPage={page}
+          onPageChange={setPage}
+          hasPrevPage={page > 1}
+          hasNextPage={hasMore}
+          loading={loading}
+        />
       )}
 
       {/* Modal */}
@@ -357,6 +421,136 @@ const Users = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Options Modal */}
+      {showDeleteModal && userToDelete && (
+        <div className="modal-overlay" onClick={closeDeleteModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            {!deleteType ? (
+              // Step 1: Choose delete type
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <FiAlertTriangle color="#f59e0b" size={28} />
+                  Delete User
+                </h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                  Choose how to delete <strong>"{userToDelete.full_name}"</strong>
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Deactivate Option */}
+                  <button
+                    className="btn btn-outline"
+                    style={{
+                      padding: '16px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      border: '2px solid #e2e8f0',
+                      borderRadius: '12px',
+                    }}
+                    onClick={() => setDeleteType('deactivate')}
+                  >
+                    <span style={{ fontWeight: '600', color: '#f59e0b' }}>🔴 Deactivate (Recommended)</span>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      User will be marked inactive. Data is preserved.
+                    </span>
+                  </button>
+
+                  {/* Permanent Delete Option */}
+                  <button
+                    className="btn btn-outline"
+                    style={{
+                      padding: '16px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      border: '2px solid #fee2e2',
+                      borderRadius: '12px',
+                      background: '#fef2f2',
+                      color: '#dc2626'
+                    }}
+                    onClick={() => setDeleteType('permanent')}
+                  >
+                    <span style={{ fontWeight: '600', color: '#dc2626' }}>⛔ Permanently Delete</span>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      User and ALL data will be permanently removed. CANNOT be undone!
+                    </span>
+                  </button>
+                </div>
+
+                <div style={{ marginTop: '24px' }}>
+                  <button className="btn btn-outline" onClick={closeDeleteModal} style={{ width: '100%' }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : deleteType === 'deactivate' ? (
+              // Step 2a: Confirm deactivation
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px' }}>
+                  Confirm Deactivation
+                </h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                  Are you sure you want to deactivate <strong>"{userToDelete.full_name}"</strong>?
+                </p>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setDeleteType(null)}
+                    style={{ flex: 1 }}
+                    disabled={isDeleting}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: '#f59e0b', color: 'white' }}
+                    onClick={performDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? 'Deactivating...' : 'Deactivate'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Step 2b: Confirm permanent deletion
+              <>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '16px', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <FiAlertTriangle size={28} />
+                  DANGER: Permanent Deletion
+                </h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                  Are you sure you want to <strong>permanently delete</strong> the user <strong>"{userToDelete.full_name}"</strong>?
+                  <br /><br />
+                  <span style={{ color: '#dc2626', fontWeight: '600' }}>This action cannot be undone.</span>
+                </p>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setDeleteType(null)}
+                    style={{ flex: 1 }}
+                    disabled={isDeleting}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ flex: 1 }}
+                    onClick={performDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

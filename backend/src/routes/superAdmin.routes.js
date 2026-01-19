@@ -61,6 +61,9 @@ router.post('/users', superAdminController.createUser);
 // DELETE /api/v1/super/users/:id
 router.delete('/users/:id', superAdminController.deleteUser);
 
+// DELETE /api/v1/super/users/:id/permanent
+router.delete('/users/:id/permanent', superAdminController.permanentDeleteUser);
+
 /**
  * PASSWORD MANAGEMENT ✨ NEW
  */

@@ -38,9 +38,9 @@ const AttendanceDaily = () => {
     onLeave: 0
   });
 
-  // ⚡ PERFORMANCE: Pagination state - 8 students for maximum speed
+  // ⚡ PERFORMANCE: Pagination state - 25 students per page for good balance
   const [currentPage, setCurrentPage] = useState(1);
-  const STUDENTS_PER_PAGE = 8;
+  const STUDENTS_PER_PAGE = 25;
 
   // ⚡ PERFORMANCE: Debounced search for instant typing
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
@@ -206,7 +206,7 @@ const AttendanceDaily = () => {
       console.log('🔍 Fetching students with filters - class:', classFilter, 'section:', sectionFilter);
 
       // Build query params
-      const queryParams = { limit: 1000 };
+      const queryParams = { limit: 200 };  // Reduced for faster loading
 
       // Priority: Section filter > Class filter
       if (sectionFilter !== 'all' && sectionFilter) {
@@ -315,7 +315,7 @@ const AttendanceDaily = () => {
 
       const studentsResponse = await studentsAPI.getAll({
         classId: classFilter !== 'all' ? classFilter : undefined,
-        limit: 1000
+        limit: 200  // Reduced for faster loading
       });
 
       console.log('📊 [Daily] Students API Response:', studentsResponse);
@@ -330,7 +330,7 @@ const AttendanceDaily = () => {
 
       const attendanceResponse = await attendanceAPI.getLogs({
         date: getTodayDate(),
-        limit: 1000
+        limit: 200  // Reduced for faster loading
       });
 
       const map = {};
@@ -1001,6 +1001,13 @@ const AttendanceDaily = () => {
         </div>
       </div>
 
+      {/* ⚡ LOAD BAR: Visual feedback during data fetch */}
+      {loading && !initialLoading && (
+        <div className="attendance-loading-bar">
+          <div className="attendance-loading-progress"></div>
+        </div>
+      )}
+
       {/* Content */}
       {initialLoading ? (
         // ⚡ SKELETON LOADING - Modern placeholder during initial load
@@ -1215,7 +1222,7 @@ const AttendanceDaily = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((student, index) => {
+                {paginatedStudents.map((student, index) => {
                   const data = attendanceMap[student.id];
                   const status = data?.status || 'unmarked';
                   const rowClass = status === 'present' ? 'row-present' :
@@ -1273,6 +1280,50 @@ const AttendanceDaily = () => {
               </tbody>
             </table>
           </div>
+
+          {/* ⚡ PERFORMANCE: Pagination Controls for Daily View */}
+          {totalPages > 1 && (
+            <div className="pagination-controls">
+              <div className="pagination-info">
+                Showing {((currentPage - 1) * STUDENTS_PER_PAGE) + 1}-{Math.min(currentPage * STUDENTS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students
+              </div>
+              <div className="pagination-buttons">
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  title="First page"
+                >
+                  ««
+                </button>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <FiChevronLeft /> Prev
+                </button>
+                <span className="page-indicator">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next <FiChevronRight />
+                </button>
+                <button
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  title="Last page"
+                >
+                  »»
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
