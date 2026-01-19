@@ -83,7 +83,7 @@ async function processAttendance(log, device) {
       console.error(`   Student: ${studentName} (ID: ${studentId})`);
       console.error(`   Student School ID: ${studentSchoolId}`);
       console.error(`   This indicates a serious data integrity issue in device_user_mappings!`);
-      
+
       // Log to security audit table (if exists)
       try {
         await query(
@@ -101,9 +101,9 @@ async function processAttendance(log, device) {
         console.error('Failed to log security event:', logError.message);
       }
 
-      return { 
-        success: false, 
-        error: 'Cross-tenant violation: Student and device belong to different schools' 
+      return {
+        success: false,
+        error: 'Cross-tenant violation: Student and device belong to different schools'
       };
     }
 
@@ -134,6 +134,10 @@ async function processAttendance(log, device) {
 
     // 4. Extract date from timestamp
     const attendanceDate = timestamp.split(' ')[0]; // Get "2025-10-18" from "2025-10-18 08:45:30"
+
+    // ✅ Add IST timezone offset to timestamp for correct interpretation
+    // Device sends "2025-10-18 08:45:30", convert to "2025-10-18T08:45:30+05:30"
+    const checkInTimeIST = timestamp.replace(' ', 'T') + '+05:30';
 
     // 5. Check if student is on leave (FIXED: Integrated leave system)
     const leaveCheck = await query(
@@ -168,7 +172,7 @@ async function processAttendance(log, device) {
         device_id = EXCLUDED.device_id,
         status = EXCLUDED.status
       RETURNING *, (xmax = 0) AS inserted`,
-      [studentId, device.school_id, device.id, timestamp, attendanceStatus, attendanceDate, false]
+      [studentId, device.school_id, device.id, checkInTimeIST, attendanceStatus, attendanceDate, false]
     );
 
     const wasInserted = insertResult.rows[0].inserted;
