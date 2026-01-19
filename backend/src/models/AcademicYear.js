@@ -112,6 +112,7 @@ class AcademicYear {
 
   /**
    * Set as current academic year
+   * ✅ FIX: Also migrates teacher class assignments to the new year
    */
   static async setCurrent(id, schoolId) {
     // First, unset all other years as current for this school
@@ -128,6 +129,26 @@ class AcademicYear {
        RETURNING *`,
       [id]
     );
+
+    const newYear = result.rows[0];
+
+    // ✅ AUTO-MIGRATE: Update all teacher class assignments to the new academic year
+    if (newYear) {
+      const migrateResult = await query(
+        `UPDATE teacher_class_assignments tca
+         SET academic_year = $1, updated_at = CURRENT_TIMESTAMP
+         FROM teachers t
+         WHERE tca.teacher_id = t.id
+         AND t.school_id = $2
+         AND tca.academic_year != $1`,
+        [newYear.year_name, schoolId]
+      );
+
+      const migratedCount = migrateResult.rowCount || 0;
+      if (migratedCount > 0) {
+        console.log(`✅ Migrated ${migratedCount} teacher assignments to ${newYear.year_name}`);
+      }
+    }
 
     return result.rows[0];
   }

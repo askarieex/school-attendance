@@ -119,7 +119,7 @@ class Teacher {
         (
           SELECT COUNT(DISTINCT tca.section_id)
           FROM teacher_class_assignments tca
-          WHERE tca.teacher_id = t.id
+          WHERE tca.teacher_id = t.id AND tca.academic_year = $${paramCount + 3}
         ) as classes_count,
         (
           SELECT json_agg(
