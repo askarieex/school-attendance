@@ -87,21 +87,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       // ✅ FIX: Removed teacherId param - backend uses JWT token to identify teacher
       final assignments = await _teacherService.getTeacherAssignments();
 
-      // ✅ FILTER: Show ONLY classes where teacher is FORM TEACHER
-      final formTeacherClasses = assignments.where((assignment) {
-        return assignment['is_form_teacher'] == true;
-      }).toList();
-
-      // Stats will be logged by individual functions
+      // ✅ CHANGED: Show ALL assigned classes (not just form teacher)
+      // This allows teachers to see all classes they're assigned to
 
       // ✅ PERFORMANCE: Load attendance stats and dashboard stats IN PARALLEL
       await Future.wait([
-        _loadAttendanceStats(formTeacherClasses),
+        _loadAttendanceStats(assignments),  // Pass ALL assignments
         _loadDashboardStats(),
       ]);
 
       setState(() {
-        _classes = formTeacherClasses; // Show ONLY form teacher classes
+        _classes = assignments; // Show ALL assigned classes
         _isLoading = false;
       });
 
