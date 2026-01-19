@@ -627,8 +627,8 @@ const markManualAttendance = async (req, res) => {
 
     // Parse check-in time (if provided, otherwise use default 9 AM)
     const timeToUse = checkInTime || '09:00:00';
-    // ✅ FIX: Use string format, NOT new Date() - Date object causes double timezone conversion
-    const checkInDateTime = `${date}T${timeToUse}+05:30`;
+    // Store local IST time WITHOUT timezone suffix - PostgreSQL TIMESTAMP converts +05:30 to UTC
+    const checkInDateTime = `${date}T${timeToUse}`;
 
     // AUTO-CALCULATE STATUS based on school settings
     let calculatedStatus = status || 'present'; // Use provided status or default to present

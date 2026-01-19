@@ -135,9 +135,9 @@ async function processAttendance(log, device) {
     // 4. Extract date from timestamp
     const attendanceDate = timestamp.split(' ')[0]; // Get "2025-10-18" from "2025-10-18 08:45:30"
 
-    // ✅ Add IST timezone offset to timestamp for correct interpretation
-    // Device sends "2025-10-18 08:45:30", convert to "2025-10-18T08:45:30+05:30"
-    const checkInTimeIST = timestamp.replace(' ', 'T') + '+05:30';
+    // Store timestamp as-is (local IST time) - DO NOT add timezone suffix
+    // PostgreSQL TIMESTAMP column would convert +05:30 to UTC, causing wrong display
+    const checkInTimeIST = timestamp.replace(' ', 'T');
 
     // 5. Check if student is on leave (FIXED: Integrated leave system)
     const leaveCheck = await query(

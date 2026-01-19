@@ -427,10 +427,10 @@ const AttendanceDaily = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return '-';
     const date = new Date(timestamp);
+    // Display time as-is - we store local IST time in database
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Asia/Kolkata'  // Force IST display
+      minute: '2-digit'
     });
   };
 

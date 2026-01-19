@@ -197,8 +197,8 @@ router.post(
 
       // Use provided checkInTime or default to 09:00:00
       const timeToUse = checkInTime || '09:00:00';
-      // ✅ Add IST timezone offset (+05:30) to ensure correct interpretation
-      const checkInDateTime = `${date}T${timeToUse}+05:30`;
+      // Store local IST time WITHOUT timezone suffix - PostgreSQL TIMESTAMP converts +05:30 to UTC
+      const checkInDateTime = `${date}T${timeToUse}`;
 
       console.log(`📝 Marking attendance: student=${studentId}, date=${date}, status=${status}, time=${timeToUse}`);
 
