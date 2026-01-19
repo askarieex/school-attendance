@@ -234,7 +234,44 @@ class TeacherService {
         'leaveToday': 0,
         'notMarkedToday': 0,
         'attendancePercentage': 100,
-      };
+  }
+  
+  /// Get attendance stats for multiple sections in one request
+  /// GET /api/v1/teacher/dashboard/batch-attendance-stats
+  Future<Map<String, dynamic>> getBatchAttendanceStats(List<int> sectionIds, [String? date]) async {
+    try {
+      if (sectionIds.isEmpty) return {};
+
+      // Get today's date if not provided
+      if (date == null) {
+        final today = DateTime.now();
+        date = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      }
+
+      Logger.network('Fetching batch attendance stats for sections: $sectionIds on $date');
+
+      // ✅ PERFORMANCE: Enable caching - efficient batch loading
+      final response = await _apiService.get(
+        ApiConfig.batchAttendanceStats,
+        queryParams: {
+          'sectionIds': sectionIds.join(','),
+          'date': date,
+        },
+        requiresAuth: true,
+        useCache: true, // ✅ ENABLE caching
+      );
+
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'] as Map<String, dynamic>;
+        Logger.success('Batch stats received for ${data.length} sections');
+        return data;
+      }
+
+      Logger.warning('No batch stats in response');
+      return {};
+    } catch (e) {
+      Logger.error('Error fetching batch stats', e);
+      return {};
     }
   }
 }

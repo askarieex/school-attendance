@@ -31,6 +31,7 @@ class ApiConfig {
   
   // Dashboard Endpoints
   static const String dashboardStats = '/school/stats/dashboard';
+  static const String batchAttendanceStats = '/teacher/dashboard/batch-attendance-stats'; // ✅ NEW BATCH API
   static const String recentCheckins = '/school/dashboard/recent-checkins';
   static const String absentStudents = '/school/dashboard/absent';
 }
