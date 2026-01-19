@@ -185,7 +185,7 @@ class AttendanceLog {
         al.id,
         al.student_id,
         al.date,
-        al.check_in_time,
+        TO_CHAR(al.check_in_time, 'HH12:MI AM') as check_in_time,
         NULL as check_out_time,
         al.status,
         al.created_at as timestamp,
@@ -214,7 +214,11 @@ class AttendanceLog {
   static async getRecentCheckins(schoolId, limit = 20) {
     const result = await query(
       `SELECT
-        al.*,
+        al.id,
+        al.student_id,
+        al.date,
+        TO_CHAR(al.check_in_time, 'HH12:MI AM') as check_in_time,
+        al.status,
         s.full_name,
         s.grade,
         s.photo_url
@@ -344,7 +348,7 @@ class AttendanceLog {
         al.id,
         al.student_id,
         al.date,
-        al.check_in_time,
+        TO_CHAR(al.check_in_time, 'HH12:MI AM') as check_in_time,
         NULL as check_out_time,
         al.status,
         al.created_at as timestamp,

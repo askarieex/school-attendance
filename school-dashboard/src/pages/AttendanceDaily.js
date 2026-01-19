@@ -426,12 +426,8 @@ const AttendanceDaily = () => {
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '-';
-    const date = new Date(timestamp);
-    // Display time as-is - we store local IST time in database
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // Backend now returns pre-formatted time string (e.g., "08:17 AM")
+    return timestamp;
   };
 
   const getCellContent = (studentId, day) => {
