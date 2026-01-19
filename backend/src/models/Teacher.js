@@ -99,8 +99,14 @@ class Teacher {
     const total = parseInt(countResult.rows[0].count);
 
     // ✅ FIXED: Get current academic year dynamically instead of hardcoded '2025-2026'
-    const { getCurrentAcademicYear } = require('../utils/academicYear');
-    const currentAcademicYear = await getCurrentAcademicYear(schoolId);
+    const { getCurrentAcademicYear, calculateAcademicYearFromDate } = require('../utils/academicYear');
+    let currentAcademicYear = await getCurrentAcademicYear(schoolId);
+
+    // FALLBACK: If no academic year is set in school settings, calculate from current date
+    if (!currentAcademicYear) {
+      currentAcademicYear = calculateAcademicYearFromDate();
+      console.log(`📅 No academic year set for school ${schoolId}, using calculated: ${currentAcademicYear}`);
+    }
 
     // Get paginated results
     params.push(limit, offset);

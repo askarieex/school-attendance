@@ -161,8 +161,8 @@ const Teachers = () => {
       await teachersAPI.assignToSection(selectedTeacher.id, {
         sectionId: assignment.sectionId,
         subject: subjectName, // Backend expects 'subject' (name), not 'subjectId'
-        isFormTeacher: assignment.isFormTeacher,
-        academicYear: '2025-2026'
+        isFormTeacher: assignment.isFormTeacher
+        // academicYear: Let backend calculate it automatically
       });
       setShowAssignModal(false);
       setAssignment({ sectionId: '', subjectId: '', isFormTeacher: false });
