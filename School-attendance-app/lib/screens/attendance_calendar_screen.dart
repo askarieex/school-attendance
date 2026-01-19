@@ -1098,8 +1098,8 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
   Widget _buildCalendarGrid(int daysInMonth) {
     // 🚀 Performance: Calculate exact width once
-    // 130 (Name) + (Days * 43) + Padding
-    final double gridWidth = 130.0 + (daysInMonth * 43.0) + 32.0;
+    // 150 (Name Cell) + (Days * 46 cellWidth) + Padding
+    final double gridWidth = 150.0 + (daysInMonth * 46.0) + 32.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1177,7 +1177,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                           cacheExtent: 500,
                           physics: const AlwaysScrollableScrollPhysics(),
                           itemBuilder: (context, index) {
-                            return _buildStudentRow(_paginatedStudents[index], daysInMonth);
+                            return SizedBox(
+                              width: gridWidth - 32, // Match grid width minus padding
+                              child: _buildStudentRow(_paginatedStudents[index], daysInMonth),
+                            );
                           },
                         ),
                       ),

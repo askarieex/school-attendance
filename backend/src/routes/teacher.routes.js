@@ -471,6 +471,145 @@ router.get('/holidays', async (req, res) => {
 });
 
 /**
+ * GET /api/v1/teacher/dashboard/batch-attendance-stats
+ * Get attendance statistics for multiple sections in a single request
+ * Query params:
+ * - sectionIds: comma-separated list of section IDs (e.g., 1,2,3)
+ * - date: YYYY-MM-DD (optional, defaults to today)
+ * Returns object with sectionId as key and stats as value
+ */
+router.get('/dashboard/batch-attendance-stats', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const schoolId = req.tenantSchoolId;
+    const { sectionIds: sectionIdsParam, date } = req.query;
+
+    if (!sectionIdsParam) {
+      return sendError(res, 'sectionIds query parameter is required', 400);
+    }
+
+    const sectionIds = sectionIdsParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+    if (sectionIds.length === 0) {
+      return sendError(res, 'Invalid sectionIds provided', 400);
+    }
+
+    // Get teacher_id
+    const teacherResult = await query(
+      'SELECT id FROM teachers WHERE user_id = $1 AND school_id = $2 AND is_active = TRUE',
+      [userId, schoolId]
+    );
+
+    if (teacherResult.rows.length === 0) {
+      return sendError(res, 'Teacher profile not found', 404);
+    }
+
+    const teacherId = teacherResult.rows[0].id;
+
+    // Verify teacher has access to these sections
+    const accessResult = await query(
+      `SELECT section_id FROM teacher_class_assignments 
+       WHERE teacher_id = $1 AND section_id = ANY($2::int[])`,
+      [teacherId, sectionIds]
+    );
+
+    const allowedSectionIds = accessResult.rows.map(r => r.section_id);
+
+    // Filter requested IDs to only allowed ones
+    const validSectionIds = sectionIds.filter(id => allowedSectionIds.includes(id));
+
+    if (validSectionIds.length === 0) {
+      return sendSuccess(res, {}, 'No valid sections found for this teacher');
+    }
+
+    // Determine date
+    let queryDate = new Date();
+    if (date) {
+      queryDate = new Date(date);
+    }
+    const dateStr = queryDate.toISOString().split('T')[0];
+    const isSunday = queryDate.getDay() === 0;
+
+    // Initialize stats object
+    const batchStats = {};
+    validSectionIds.forEach(id => {
+      batchStats[id] = {
+        totalStudents: 0,
+        present: 0,
+        late: 0,
+        absent: 0,
+        leave: 0,
+        notMarked: 0,
+        attendancePercentage: 0
+      };
+    });
+
+    // 1. Get total students per section
+    const studentsResult = await query(
+      `SELECT section_id, COUNT(*) as count
+       FROM students
+       WHERE section_id = ANY($1::int[]) AND school_id = $2 AND is_active = TRUE
+       GROUP BY section_id`,
+      [validSectionIds, schoolId]
+    );
+
+    studentsResult.rows.forEach(row => {
+      if (batchStats[row.section_id]) {
+        batchStats[row.section_id].totalStudents = parseInt(row.count);
+        batchStats[row.section_id].notMarked = parseInt(row.count); // Default all to not marked
+      }
+    });
+
+    // 2. Get attendance logs if not Sunday
+    if (!isSunday) {
+      const attendanceResult = await query(
+        `SELECT 
+           s.section_id,
+           COUNT(CASE WHEN al.status = 'present' THEN 1 END) as present,
+           COUNT(CASE WHEN al.status = 'late' THEN 1 END) as late,
+           COUNT(CASE WHEN al.status = 'absent' THEN 1 END) as absent,
+           COUNT(CASE WHEN al.status = 'leave' THEN 1 END) as leave,
+           COUNT(*) as total_marked
+         FROM attendance_logs al
+         JOIN students s ON al.student_id = s.id
+         WHERE s.section_id = ANY($1::int[]) 
+           AND al.school_id = $2 
+           AND al.date = $3
+           AND s.is_active = TRUE
+         GROUP BY s.section_id`,
+        [validSectionIds, schoolId, dateStr]
+      );
+
+      attendanceResult.rows.forEach(row => {
+        const secId = row.section_id;
+        if (batchStats[secId]) {
+          const stats = batchStats[secId];
+          stats.present = parseInt(row.present);
+          stats.late = parseInt(row.late);
+          stats.absent = parseInt(row.absent);
+          stats.leave = parseInt(row.leave);
+
+          const totalMarked = parseInt(row.total_marked);
+          stats.notMarked = Math.max(0, stats.totalStudents - totalMarked);
+
+          // Calculate percentage
+          const attended = stats.present + stats.late;
+          stats.attendancePercentage = stats.totalStudents > 0
+            ? Math.round((attended / stats.totalStudents) * 100)
+            : 0;
+        }
+      });
+    }
+
+    sendSuccess(res, batchStats, 'Batch attendance stats retrieved');
+
+  } catch (error) {
+    console.error('Batch stats error:', error);
+    sendError(res, 'Failed to retrieve batch statistics', 500);
+  }
+});
+
+/**
  * GET /api/v1/teacher/dashboard/stats
  * Get comprehensive dashboard statistics for teacher's form teacher classes
  * Returns: student counts by gender, today's attendance stats, attendance percentage
