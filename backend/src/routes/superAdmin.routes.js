@@ -58,11 +58,16 @@ router.get('/users', superAdminController.getUsers);
 // POST /api/v1/super/users
 router.post('/users', superAdminController.createUser);
 
+// DELETE /api/v1/super/users/:id/permanent (Move to top to avoid matching issues)
+router.delete('/users/:id/permanent', superAdminController.permanentDeleteUser);
+
+// GET /api/v1/super/users/debug-route
+router.get('/users/debug-route', (req, res) => res.json({ message: 'Debug route works!' }));
+
 // DELETE /api/v1/super/users/:id
 router.delete('/users/:id', superAdminController.deleteUser);
 
-// DELETE /api/v1/super/users/:id/permanent
-router.delete('/users/:id/permanent', superAdminController.permanentDeleteUser);
+
 
 /**
  * PASSWORD MANAGEMENT ✨ NEW
