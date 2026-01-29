@@ -27,12 +27,13 @@ const SystemSettings = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.success) {
+      // ✅ FIX: Access response.data since axios wraps the response
+      if (response.data && response.data.success) {
         // Convert array to object by category
         const grouped = {};
-        Object.keys(response.data).forEach(category => {
+        Object.keys(response.data.data).forEach(category => {
           grouped[category] = {};
-          response.data[category].forEach(setting => {
+          response.data.data[category].forEach(setting => {
             grouped[category][setting.setting_key] = setting.setting_value;
           });
         });
@@ -78,9 +79,12 @@ const SystemSettings = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (response.success) {
+      // ✅ FIX: Access response.data since axios wraps the response
+      if (response.data && response.data.success) {
         showMessage('Settings saved successfully!', 'success');
         fetchSettings(); // Refresh settings
+      } else {
+        showMessage(response.data?.error || 'Failed to save settings', 'error');
       }
     } catch (error) {
       console.error('Failed to save settings:', error);
