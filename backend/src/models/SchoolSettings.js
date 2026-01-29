@@ -81,6 +81,8 @@ class SchoolSettings {
       sms_balance: 'sms_balance',
       send_on_absent: 'send_on_absent',
       send_on_late: 'send_on_late',
+      send_on_present: 'send_on_present',
+      send_on_leave: 'send_on_leave',
       send_daily_summary: 'send_daily_summary',
 
       // Other

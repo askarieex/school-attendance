@@ -68,6 +68,8 @@ const Settings = () => {
     smsBalance: 0,
     sendOnAbsent: true,
     sendOnLate: true,
+    sendOnPresent: false,
+    sendOnLeave: true,
     sendDailySummary: false
   });
 
@@ -115,6 +117,8 @@ const Settings = () => {
           smsBalance: settings.sms_balance || 0,
           sendOnAbsent: settings.send_on_absent ?? true,
           sendOnLate: settings.send_on_late ?? true,
+          sendOnPresent: settings.send_on_present ?? false,
+          sendOnLeave: settings.send_on_leave ?? true,
           sendDailySummary: settings.send_daily_summary ?? false
         });
       }
@@ -299,6 +303,8 @@ const Settings = () => {
         sms_api_key: smsSettings.smsApiKey,
         send_on_absent: smsSettings.sendOnAbsent,
         send_on_late: smsSettings.sendOnLate,
+        send_on_present: smsSettings.sendOnPresent,
+        send_on_leave: smsSettings.sendOnLeave,
         send_daily_summary: smsSettings.sendDailySummary
       };
 
@@ -891,10 +897,10 @@ const Settings = () => {
                         <label className="checkbox-label">
                           <input
                             type="checkbox"
-                            checked={smsSettings.sendOnAbsent}
-                            onChange={(e) => setSmsSettings({ ...smsSettings, sendOnAbsent: e.target.checked })}
+                            checked={smsSettings.sendOnPresent}
+                            onChange={(e) => setSmsSettings({ ...smsSettings, sendOnPresent: e.target.checked })}
                           />
-                          Send SMS when student is absent
+                          ✅ Send notification when student arrives on time
                         </label>
                         <label className="checkbox-label">
                           <input
@@ -902,7 +908,23 @@ const Settings = () => {
                             checked={smsSettings.sendOnLate}
                             onChange={(e) => setSmsSettings({ ...smsSettings, sendOnLate: e.target.checked })}
                           />
-                          Send SMS when student is late
+                          ⚠️ Send notification when student is late
+                        </label>
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={smsSettings.sendOnAbsent}
+                            onChange={(e) => setSmsSettings({ ...smsSettings, sendOnAbsent: e.target.checked })}
+                          />
+                          🚫 Send notification when student is absent
+                        </label>
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={smsSettings.sendOnLeave}
+                            onChange={(e) => setSmsSettings({ ...smsSettings, sendOnLeave: e.target.checked })}
+                          />
+                          📋 Send notification when student is on leave
                         </label>
                         <label className="checkbox-label">
                           <input
@@ -910,7 +932,7 @@ const Settings = () => {
                             checked={smsSettings.sendDailySummary}
                             onChange={(e) => setSmsSettings({ ...smsSettings, sendDailySummary: e.target.checked })}
                           />
-                          Send daily attendance summary to parents
+                          📊 Send daily attendance summary to parents
                         </label>
                       </div>
                     </>

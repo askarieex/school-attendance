@@ -180,107 +180,119 @@ async function processAttendance(log, device) {
     console.log(`✅ Attendance ${action}: ${studentName} - ${attendanceStatus} at ${timestamp}`);
 
     // 📱 SEND WHATSAPP/SMS NOTIFICATION TO PARENT
-    // Only send for new attendance records (not duplicates) and for late/absent/leave status
-    if (wasInserted && (attendanceStatus === 'late' || attendanceStatus === 'absent' || attendanceStatus === 'leave')) {
+    // Check school's notification preferences to decide whether to send
+    if (wasInserted) {
       try {
-        // ✅ NEW: Import School model for credit checking
-        const School = require('../models/School');
+        // ✅ Load school notification preferences
+        const SchoolSettings = require('../models/SchoolSettings');
+        const schoolSettings = await SchoolSettings.findBySchool(device.school_id);
 
-        // ✅ CREDIT GATEKEEPER: Check if school has WhatsApp enabled AND has credits
-        const canSend = await School.canSendWhatsApp(device.school_id);
+        // ✅ Check if this status should trigger a notification
+        const shouldNotify = (
+          (attendanceStatus === 'present' && schoolSettings?.send_on_present === true) ||
+          (attendanceStatus === 'late' && schoolSettings?.send_on_late !== false) ||
+          (attendanceStatus === 'absent' && schoolSettings?.send_on_absent !== false) ||
+          (attendanceStatus === 'leave' && schoolSettings?.send_on_leave !== false)
+        );
 
-        if (!canSend) {
-          // Get current status for detailed logging
-          const whatsappStatus = await School.getWhatsAppStatus(device.school_id);
-          if (!whatsappStatus?.whatsapp_enabled) {
-            console.log(`⚠️ [RFID] WhatsApp DISABLED for school ${device.school_id}, skipping notification for ${studentName}`);
-          } else if (whatsappStatus?.whatsapp_credits <= 0) {
-            console.log(`⚠️ [RFID] OUT OF CREDITS for school ${device.school_id} (credits: ${whatsappStatus.whatsapp_credits}), skipping notification for ${studentName}`);
-          }
-          // TODO: Fallback to free push notification if available
+        if (!shouldNotify) {
+          console.log(`ℹ️ [RFID] Notification skipped for ${studentName} (${attendanceStatus}) - disabled in school settings`);
         } else {
-          // Get student phone numbers
-          const studentPhoneResult = await query(
-            'SELECT guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
-            [studentId]
-          );
+          // ✅ NEW: Import School model for credit checking
+          const School = require('../models/School');
 
-          if (studentPhoneResult.rows.length > 0) {
-            const phoneData = studentPhoneResult.rows[0];
+          // ✅ CREDIT GATEKEEPER: Check if school has WhatsApp enabled AND has credits
+          const canSend = await School.canSendWhatsApp(device.school_id);
 
-            // Try multiple phone fields in order of priority
-            let phoneToUse = null;
-            if (phoneData.guardian_phone && phoneData.guardian_phone.trim() !== '') {
-              phoneToUse = phoneData.guardian_phone;
-            } else if (phoneData.parent_phone && phoneData.parent_phone.trim() !== '') {
-              phoneToUse = phoneData.parent_phone;
-            } else if (phoneData.mother_phone && phoneData.mother_phone.trim() !== '') {
-              phoneToUse = phoneData.mother_phone;
+          if (!canSend) {
+            // Get current status for detailed logging
+            const whatsappStatus = await School.getWhatsAppStatus(device.school_id);
+            if (!whatsappStatus?.whatsapp_enabled) {
+              console.log(`⚠️ [RFID] WhatsApp DISABLED for school ${device.school_id}, skipping notification for ${studentName}`);
+            } else if (whatsappStatus?.whatsapp_credits <= 0) {
+              console.log(`⚠️ [RFID] OUT OF CREDITS for school ${device.school_id} (credits: ${whatsappStatus.whatsapp_credits}), skipping notification for ${studentName}`);
             }
+            // TODO: Fallback to free push notification if available
+          } else {
+            // Get student phone numbers
+            const studentPhoneResult = await query(
+              'SELECT guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
+              [studentId]
+            );
 
-            if (phoneToUse) {
-              // ✅ SECURITY FIX (Bug #7): Mask phone number in logs
-              const { maskPhone } = require('../utils/logger');
-              console.log(`📱 [RFID] Sending notification to ${maskPhone(phoneToUse)} for ${studentName} (${attendanceStatus})`);
+            if (studentPhoneResult.rows.length > 0) {
+              const phoneData = studentPhoneResult.rows[0];
 
-              // Import WhatsApp service
-              const whatsappService = require('./whatsappService');
+              // Try multiple phone fields in order of priority
+              let phoneToUse = null;
+              if (phoneData.guardian_phone && phoneData.guardian_phone.trim() !== '') {
+                phoneToUse = phoneData.guardian_phone;
+              } else if (phoneData.parent_phone && phoneData.parent_phone.trim() !== '') {
+                phoneToUse = phoneData.parent_phone;
+              } else if (phoneData.mother_phone && phoneData.mother_phone.trim() !== '') {
+                phoneToUse = phoneData.mother_phone;
+              }
 
-              // Format check-in time (extract HH:MM:SS from timestamp)
-              const timeFormatted = timestamp.split(' ')[1] || timestamp;
+              if (phoneToUse) {
+                // ✅ SECURITY FIX (Bug #7): Mask phone number in logs
+                const { maskPhone } = require('../utils/logger');
+                console.log(`📱 [RFID] Sending notification to ${maskPhone(phoneToUse)} for ${studentName} (${attendanceStatus})`);
 
-              // Send alert (async, non-blocking)
-              setImmediate(async () => {
-                try {
-                  const result = await whatsappService.sendAttendanceAlert({
-                    parentPhone: phoneToUse,
-                    studentName: studentName,
-                    studentId: studentId,
-                    schoolId: device.school_id,
-                    status: attendanceStatus,
-                    checkInTime: timeFormatted,
-                    schoolName: schoolName,
-                    date: attendanceDate
-                  });
+                // Import WhatsApp service
+                const whatsappService = require('./whatsappService');
 
-                  if (result.success) {
-                    if (result.skipped) {
-                      console.log(`⏭️  [RFID] Notification skipped: ${result.reason}`);
-                    } else {
-                      console.log(`✅ [RFID] Notification sent successfully via ${result.sentVia}: ${result.messageId}`);
+                // Format check-in time (extract HH:MM:SS from timestamp)
+                const timeFormatted = timestamp.split(' ')[1] || timestamp;
 
-                      // ✅ NEW: Decrement WhatsApp credit on successful send
-                      const remainingCredits = await School.decrementWhatsAppCredit(device.school_id);
-                      console.log(`💰 [RFID] Credit used. School ${device.school_id} remaining credits: ${remainingCredits}`);
+                // Send alert (async, non-blocking)
+                setImmediate(async () => {
+                  try {
+                    const result = await whatsappService.sendAttendanceAlert({
+                      parentPhone: phoneToUse,
+                      studentName: studentName,
+                      studentId: studentId,
+                      schoolId: device.school_id,
+                      status: attendanceStatus,
+                      checkInTime: timeFormatted,
+                      schoolName: schoolName,
+                      date: attendanceDate
+                    });
 
-                      // Log low credit warning
-                      if (remainingCredits <= 50 && remainingCredits > 0) {
-                        console.warn(`⚠️ [CREDITS] LOW BALANCE ALERT: School ${device.school_id} has only ${remainingCredits} WhatsApp credits left!`);
-                      } else if (remainingCredits === 0) {
-                        console.warn(`🚨 [CREDITS] ZERO CREDITS: School ${device.school_id} has exhausted WhatsApp credits!`);
+                    if (result.success) {
+                      if (result.skipped) {
+                        console.log(`⏭️  [RFID] Notification skipped: ${result.reason}`);
+                      } else {
+                        console.log(`✅ [RFID] Notification sent successfully via ${result.sentVia}: ${result.messageId}`);
+
+                        // ✅ NEW: Decrement WhatsApp credit on successful send
+                        const remainingCredits = await School.decrementWhatsAppCredit(device.school_id);
+                        console.log(`💰 [RFID] Credit used. School ${device.school_id} remaining credits: ${remainingCredits}`);
+
+                        // Log low credit warning
+                        if (remainingCredits <= 50 && remainingCredits > 0) {
+                          console.warn(`⚠️ [CREDITS] LOW BALANCE ALERT: School ${device.school_id} has only ${remainingCredits} WhatsApp credits left!`);
+                        } else if (remainingCredits === 0) {
+                          console.warn(`🚨 [CREDITS] ZERO CREDITS: School ${device.school_id} has exhausted WhatsApp credits!`);
+                        }
                       }
+                    } else {
+                      console.error(`❌ [RFID] Notification failed: ${result.error}`);
+                      // Don't decrement credit if send failed
                     }
-                  } else {
-                    console.error(`❌ [RFID] Notification failed: ${result.error}`);
-                    // Don't decrement credit if send failed
+                  } catch (notifError) {
+                    console.error('[RFID] Notification error (non-fatal):', notifError.message);
                   }
-                } catch (notifError) {
-                  console.error('[RFID] Notification error (non-fatal):', notifError.message);
-                }
-              });
-            } else {
-              console.log(`⚠️  [RFID] No phone number found for ${studentName}, skipping notification`);
+                });
+              } else {
+                console.log(`⚠️  [RFID] No phone number found for ${studentName}, skipping notification`);
+              }
             }
           }
         }
       } catch (phoneError) {
-        console.error('[RFID] Phone lookup error (non-fatal):', phoneError.message);
+        console.error('[RFID] Phone lookup/settings error (non-fatal):', phoneError.message);
         // Don't fail attendance processing if notification fails
       }
-    } else if (wasInserted && attendanceStatus === 'present') {
-      console.log(`ℹ️  [RFID] Student ${studentName} marked as present, no notification needed`);
-    } else if (!wasInserted) {
-      console.log(`ℹ️  [RFID] Duplicate scan for ${studentName}, notification already sent`);
     }
 
     return {
