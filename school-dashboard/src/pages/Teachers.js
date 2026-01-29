@@ -65,8 +65,13 @@ const Teachers = () => {
       errors.phone = "Phone number must be 10 digits";
     }
 
-    if (newTeacher.password && newTeacher.password.length < 6) {
-      errors.password = "Password must be at least 6 characters";
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
+    if (newTeacher.password) {
+      if (newTeacher.password.length < 6) {
+        errors.password = "Password must be at least 6 characters";
+      } else if (!passwordRegex.test(newTeacher.password)) {
+        errors.password = "Password must contain at least one uppercase letter, one lowercase letter, and one number";
+      }
     }
 
     setFormErrors(errors);
@@ -120,7 +125,7 @@ const Teachers = () => {
     try {
       const payload = {
         ...newTeacher,
-        password: newTeacher.password || 'teacher123'
+        password: newTeacher.password || 'Teacher123'
       };
       const response = await teachersAPI.create(payload);
       if (response.success) {
@@ -136,7 +141,17 @@ const Teachers = () => {
       }
     } catch (err) {
       console.error('Error creating teacher:', err);
-      setFormErrors({ submit: err.response?.data?.message || err.message || 'Failed to create teacher' });
+      const errorData = err.response?.data;
+      const newErrors = { submit: errorData?.message || err.message || 'Failed to create teacher' };
+
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        errorData.errors.forEach(error => {
+          if (error.field) {
+            newErrors[error.field] = error.message;
+          }
+        });
+      }
+      setFormErrors(newErrors);
     }
   };
 

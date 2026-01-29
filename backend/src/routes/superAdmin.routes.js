@@ -120,4 +120,36 @@ router.get('/audit-logs/:id', auditLogsController.getAuditLogDetails);
 // GET /api/v1/super/stats
 router.get('/stats', superAdminController.getPlatformStats);
 
+/**
+ * WHATSAPP CREDIT MANAGEMENT ✨ NEW
+ */
+const whatsappCreditController = require('../controllers/whatsappCreditController');
+
+// GET /api/v1/super/whatsapp/schools - Get all schools with WhatsApp status
+router.get('/whatsapp/schools', whatsappCreditController.getAllSchoolsWhatsAppStatus);
+
+// GET /api/v1/super/whatsapp/schools/:id - Get single school WhatsApp status
+router.get('/whatsapp/schools/:id', whatsappCreditController.getSchoolWhatsAppStatus);
+
+// POST /api/v1/super/whatsapp/schools/:id/enable - Enable/disable WhatsApp
+router.post('/whatsapp/schools/:id/enable', whatsappCreditController.setWhatsAppEnabled);
+
+// POST /api/v1/super/whatsapp/schools/:id/credits - Add credits (top-up)
+router.post('/whatsapp/schools/:id/credits', whatsappCreditController.addCredits);
+
+// POST /api/v1/super/whatsapp/schools/:id/set-credits - Set credits to specific value
+router.post('/whatsapp/schools/:id/set-credits', whatsappCreditController.setCredits);
+
+// PUT /api/v1/super/whatsapp/schools/:id/threshold - Set low credit threshold
+router.put('/whatsapp/schools/:id/threshold', whatsappCreditController.setLowCreditThreshold);
+
+// GET /api/v1/super/whatsapp/low-credits - Get schools with low credits
+router.get('/whatsapp/low-credits', whatsappCreditController.getLowCreditSchools);
+
+// GET /api/v1/super/whatsapp/stats - Overall WhatsApp statistics
+router.get('/whatsapp/stats', whatsappCreditController.getWhatsAppStats);
+
+// POST /api/v1/super/whatsapp/schools/:id/api-key - Set per-school API key
+router.post('/whatsapp/schools/:id/api-key', whatsappCreditController.setSchoolApiKey);
+
 module.exports = router;

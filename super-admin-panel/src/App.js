@@ -12,6 +12,7 @@ import SystemSettings from './pages/SystemSettings';
 import PasswordManagement from './pages/PasswordManagement';
 import AuditLogs from './pages/AuditLogs';
 import DatabaseExplorer from './pages/DatabaseExplorer';
+import WhatsAppManagement from './pages/WhatsAppManagement';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
                       <Route path="/password-management" element={<PasswordManagement />} />
                       <Route path="/audit-logs" element={<AuditLogs />} />
                       <Route path="/database" element={<DatabaseExplorer />} />
+                      <Route path="/whatsapp" element={<WhatsAppManagement />} />
                       <Route path="/statistics" element={<div className="card"><h2>Statistics</h2><p>Coming soon...</p></div>} />
                       <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Routes>

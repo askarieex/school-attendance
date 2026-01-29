@@ -292,6 +292,109 @@ class School {
       client.release();
     }
   }
+
+  // ==========================================
+  // WHATSAPP CREDIT MANAGEMENT METHODS
+  // ==========================================
+
+  /**
+   * Get WhatsApp status for a school
+   */
+  static async getWhatsAppStatus(schoolId) {
+    const result = await query(
+      `SELECT whatsapp_enabled, whatsapp_credits, whatsapp_credits_used, 
+              whatsapp_last_refill, whatsapp_low_credit_threshold
+       FROM schools WHERE id = $1`,
+      [schoolId]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Check if school can send WhatsApp (enabled + has credits)
+   * @returns {boolean} true if WhatsApp is enabled AND credits > 0
+   */
+  static async canSendWhatsApp(schoolId) {
+    const result = await query(
+      `SELECT whatsapp_enabled, whatsapp_credits 
+       FROM schools WHERE id = $1`,
+      [schoolId]
+    );
+    const school = result.rows[0];
+    return school?.whatsapp_enabled === true && school?.whatsapp_credits > 0;
+  }
+
+  /**
+   * Decrement credit by 1 and return remaining credits
+   * Only decrements if credits > 0
+   * @returns {number} remaining credits after decrement
+   */
+  static async decrementWhatsAppCredit(schoolId) {
+    const result = await query(
+      `UPDATE schools 
+       SET whatsapp_credits = whatsapp_credits - 1,
+           whatsapp_credits_used = COALESCE(whatsapp_credits_used, 0) + 1
+       WHERE id = $1 AND whatsapp_credits > 0
+       RETURNING whatsapp_credits, whatsapp_low_credit_threshold`,
+      [schoolId]
+    );
+
+    if (result.rows.length === 0) {
+      return 0; // No credits or decrement failed
+    }
+
+    const { whatsapp_credits, whatsapp_low_credit_threshold } = result.rows[0];
+
+    // Log low credit warning
+    if (whatsapp_credits <= (whatsapp_low_credit_threshold || 50)) {
+      console.warn(`⚠️ [CREDITS] School ${schoolId} is LOW on credits: ${whatsapp_credits} remaining`);
+    }
+
+    return whatsapp_credits;
+  }
+
+  /**
+   * Add credits to a school (top-up)
+   */
+  static async addWhatsAppCredits(schoolId, credits) {
+    const result = await query(
+      `UPDATE schools 
+       SET whatsapp_credits = COALESCE(whatsapp_credits, 0) + $2,
+           whatsapp_last_refill = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [schoolId, credits]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Enable or disable WhatsApp for a school
+   */
+  static async setWhatsAppEnabled(schoolId, enabled) {
+    const result = await query(
+      `UPDATE schools 
+       SET whatsapp_enabled = $2
+       WHERE id = $1
+       RETURNING *`,
+      [schoolId, enabled]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Get all schools with low credits (for alert system)
+   */
+  static async getSchoolsWithLowCredits() {
+    const result = await query(
+      `SELECT id, name, email, whatsapp_credits, whatsapp_low_credit_threshold
+       FROM schools
+       WHERE whatsapp_enabled = TRUE 
+       AND whatsapp_credits <= COALESCE(whatsapp_low_credit_threshold, 50)
+       AND is_active = TRUE`
+    );
+    return result.rows;
+  }
 }
 
 module.exports = School;

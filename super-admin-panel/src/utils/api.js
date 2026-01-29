@@ -181,5 +181,36 @@ export const statsAPI = {
   getRevenueStats: () => api.get('/super/stats/revenue'),
 };
 
+// WhatsApp Credit Management APIs ✨ NEW
+export const whatsappCreditsAPI = {
+  // Get all schools with WhatsApp status
+  getAllSchools: () => api.get('/super/whatsapp/schools'),
+
+  // Get single school WhatsApp status
+  getSchoolStatus: (schoolId) => api.get(`/super/whatsapp/schools/${schoolId}`),
+
+  // Enable/disable WhatsApp for a school
+  setEnabled: (schoolId, enabled) => api.post(`/super/whatsapp/schools/${schoolId}/enable`, { enabled }),
+
+  // Add credits (top-up)
+  addCredits: (schoolId, credits) => api.post(`/super/whatsapp/schools/${schoolId}/credits`, { credits }),
+
+  // Set credits to specific value
+  setCredits: (schoolId, credits) => api.post(`/super/whatsapp/schools/${schoolId}/set-credits`, { credits }),
+
+  // Set low credit threshold
+  setThreshold: (schoolId, threshold) => api.put(`/super/whatsapp/schools/${schoolId}/threshold`, { threshold }),
+
+  // Get schools with low credits
+  getLowCreditSchools: () => api.get('/super/whatsapp/low-credits'),
+
+  // Get overall WhatsApp statistics
+  getStats: () => api.get('/super/whatsapp/stats'),
+
+  // Set per-school API key (for schools using their own YCloud account)
+  setApiKey: (schoolId, apiKey, useOwnKey = true) =>
+    api.post(`/super/whatsapp/schools/${schoolId}/api-key`, { apiKey, useOwnKey }),
+};
+
 
 export default api;

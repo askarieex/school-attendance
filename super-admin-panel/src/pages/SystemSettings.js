@@ -60,7 +60,7 @@ const SystemSettings = () => {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      
+
       // Flatten settings for batch update
       const settingsArray = [];
       Object.keys(settings).forEach(category => {
@@ -141,8 +141,8 @@ const SystemSettings = () => {
             <p>Configure platform-wide settings</p>
           </div>
         </div>
-        <button 
-          className="btn-save" 
+        <button
+          className="btn-save"
           onClick={saveSettings}
           disabled={saving}
         >
@@ -170,31 +170,31 @@ const SystemSettings = () => {
 
       {/* Tabs */}
       <div className="settings-tabs">
-        <button 
+        <button
           className={activeTab === 'general' ? 'active' : ''}
           onClick={() => setActiveTab('general')}
         >
           General
         </button>
-        <button 
+        <button
           className={activeTab === 'whatsapp' ? 'active' : ''}
           onClick={() => setActiveTab('whatsapp')}
         >
           WhatsApp
         </button>
-        <button 
+        <button
           className={activeTab === 'email' ? 'active' : ''}
           onClick={() => setActiveTab('email')}
         >
           Email
         </button>
-        <button 
+        <button
           className={activeTab === 'storage' ? 'active' : ''}
           onClick={() => setActiveTab('storage')}
         >
           Storage
         </button>
-        <button 
+        <button
           className={activeTab === 'security' ? 'active' : ''}
           onClick={() => setActiveTab('security')}
         >
@@ -204,7 +204,7 @@ const SystemSettings = () => {
 
       {/* Settings Content */}
       <div className="settings-content">
-        
+
         {/* GENERAL TAB */}
         {activeTab === 'general' && (
           <div className="settings-section">
@@ -263,9 +263,9 @@ const SystemSettings = () => {
         {/* WHATSAPP TAB */}
         {activeTab === 'whatsapp' && (
           <div className="settings-section">
-            <h2>WhatsApp Configuration</h2>
+            <h2>WhatsApp Configuration (YCloud)</h2>
             <p className="section-description">
-              Configure shared Twilio account for all schools. All schools will use these credentials.
+              Configure your master YCloud API key. This will be used for all schools unless a school has their own API key.
             </p>
 
             <div className="settings-grid">
@@ -280,33 +280,37 @@ const SystemSettings = () => {
                 </label>
               </div>
 
-              <div className="form-group">
-                <label>Twilio Account SID</label>
-                <input
-                  type="text"
-                  value={settings.whatsapp?.twilio_account_sid || ''}
-                  onChange={(e) => handleSettingChange('whatsapp', 'twilio_account_sid', e.target.value)}
-                  placeholder="AC..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Twilio Auth Token</label>
+              <div className="form-group full-width">
+                <label>YCloud API Key (Master)</label>
                 <input
                   type="password"
-                  value={settings.whatsapp?.twilio_auth_token || ''}
-                  onChange={(e) => handleSettingChange('whatsapp', 'twilio_auth_token', e.target.value)}
-                  placeholder="Enter Twilio Auth Token"
+                  value={settings.whatsapp?.ycloud_api_key || ''}
+                  onChange={(e) => handleSettingChange('whatsapp', 'ycloud_api_key', e.target.value)}
+                  placeholder="Enter your YCloud API Key"
+                  style={{ fontFamily: 'monospace' }}
+                />
+                <small style={{ color: '#64748b', marginTop: '4px', display: 'block' }}>
+                  Get your API key from YCloud Dashboard → API Keys
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label>WhatsApp Business Phone ID</label>
+                <input
+                  type="text"
+                  value={settings.whatsapp?.whatsapp_phone_id || ''}
+                  onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_phone_id', e.target.value)}
+                  placeholder="Your WhatsApp Phone Number ID"
                 />
               </div>
 
               <div className="form-group">
-                <label>Twilio Phone Number</label>
+                <label>WhatsApp Business Account ID</label>
                 <input
-                  type="tel"
-                  value={settings.whatsapp?.twilio_phone_number || ''}
-                  onChange={(e) => handleSettingChange('whatsapp', 'twilio_phone_number', e.target.value)}
-                  placeholder="+14155238886"
+                  type="text"
+                  value={settings.whatsapp?.whatsapp_business_account_id || ''}
+                  onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_business_account_id', e.target.value)}
+                  placeholder="Your WABA ID"
                 />
               </div>
 
@@ -317,9 +321,86 @@ const SystemSettings = () => {
                   value={settings.whatsapp?.whatsapp_daily_limit || '5000'}
                   onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_daily_limit', e.target.value)}
                   min="100"
-                  max="50000"
+                  max="100000"
                 />
               </div>
+            </div>
+
+            {/* Template Configuration Section */}
+            <div style={{
+              background: '#fefce8',
+              border: '1px solid #facc15',
+              borderRadius: '8px',
+              padding: '16px',
+              marginTop: '24px',
+              marginBottom: '20px'
+            }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#854d0e' }}>📝 Message Templates (Meta Approved)</h4>
+              <p style={{ margin: '0 0 16px 0', color: '#713f12', fontSize: '14px' }}>
+                Templates must be created and approved in <strong>Meta Business Manager</strong> → WhatsApp Manager → Message Templates.
+                Your template should use these parameters: <br />
+                <code style={{ background: '#fef9c3', padding: '2px 6px', borderRadius: '4px' }}>
+                  {'{{1}}'} = Student Name, {'{{2}}'} = Time, {'{{3}}'} = Date, {'{{4}}'} = School Name
+                </code>
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '13px' }}>🔔 Late Template</label>
+                  <input
+                    type="text"
+                    value={settings.whatsapp?.whatsapp_template_late || 'attendance_late'}
+                    onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_template_late', e.target.value)}
+                    placeholder="attendance_late"
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '13px' }}>⚠️ Absent Template</label>
+                  <input
+                    type="text"
+                    value={settings.whatsapp?.whatsapp_template_absent || 'attendance_absent'}
+                    onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_template_absent', e.target.value)}
+                    placeholder="attendance_absent"
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '13px' }}>✅ Present Template</label>
+                  <input
+                    type="text"
+                    value={settings.whatsapp?.whatsapp_template_present || 'attendance_present'}
+                    onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_template_present', e.target.value)}
+                    placeholder="attendance_present"
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '13px' }}>📋 Leave Template</label>
+                  <input
+                    type="text"
+                    value={settings.whatsapp?.whatsapp_template_leave || 'attendance_leave'}
+                    onChange={(e) => handleSettingChange('whatsapp', 'whatsapp_template_leave', e.target.value)}
+                    placeholder="attendance_leave"
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Per-School API Keys Info Box */}
+            <div style={{
+              background: '#f0f9ff',
+              border: '1px solid #0ea5e9',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '20px'
+            }}>
+              <h4 style={{ margin: '0 0 8px 0', color: '#0369a1' }}>🔑 Per-School API Keys</h4>
+              <p style={{ margin: 0, color: '#0c4a6e', fontSize: '14px' }}>
+                If some schools want to use their own YCloud account, you can set their API key in the
+                <strong> WhatsApp Credits</strong> page. Schools with their own key will use it instead of your master key.
+              </p>
             </div>
 
             {/* WhatsApp Test Section */}
@@ -332,7 +413,7 @@ const SystemSettings = () => {
                   value={testNumber}
                   onChange={(e) => setTestNumber(e.target.value)}
                 />
-                <button 
+                <button
                   className="btn-test"
                   onClick={testWhatsAppConnection}
                   disabled={testingWhatsApp}
@@ -347,7 +428,7 @@ const SystemSettings = () => {
                   )}
                 </button>
               </div>
-              <p className="hint">A test message will be sent to verify your Twilio configuration</p>
+              <p className="hint">A test message will be sent to verify your YCloud configuration</p>
             </div>
           </div>
         )}
@@ -356,7 +437,7 @@ const SystemSettings = () => {
         {activeTab === 'email' && (
           <div className="settings-section">
             <h2>Email Configuration (SMTP)</h2>
-            
+
             <div className="settings-grid">
               <div className="form-group full-width">
                 <label className="checkbox-label">
@@ -447,7 +528,7 @@ const SystemSettings = () => {
         {activeTab === 'storage' && (
           <div className="settings-section">
             <h2>Storage Settings</h2>
-            
+
             <div className="settings-grid">
               <div className="form-group">
                 <label>Upload Directory</label>
@@ -486,7 +567,7 @@ const SystemSettings = () => {
         {activeTab === 'security' && (
           <div className="settings-section">
             <h2>Security Settings</h2>
-            
+
             <div className="settings-grid">
               <div className="form-group">
                 <label>JWT Access Token Expiry</label>
@@ -564,7 +645,7 @@ const SystemSettings = () => {
                     />
                     Require Uppercase Letter
                   </label>
-                  
+
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
@@ -573,7 +654,7 @@ const SystemSettings = () => {
                     />
                     Require Lowercase Letter
                   </label>
-                  
+
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
@@ -582,7 +663,7 @@ const SystemSettings = () => {
                     />
                     Require Number
                   </label>
-                  
+
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
