@@ -61,9 +61,9 @@ class WhatsAppService {
         return false;
       }
 
-      // Load YCloud settings
-      this.masterApiKey = settings.ycloud_api_key;
-      this.phoneNumberId = settings.whatsapp_phone_id;
+      // Load YCloud settings - TRIM to remove any whitespace/newlines
+      this.masterApiKey = settings.ycloud_api_key?.trim() || '';
+      this.phoneNumberId = settings.whatsapp_phone_id?.trim() || '';
       this.wabaId = settings.whatsapp_business_account_id;
 
       // Load template names if configured
@@ -125,7 +125,7 @@ class WhatsAppService {
         const school = result.rows[0];
         if (school.whatsapp_use_own_key && school.whatsapp_api_key) {
           console.log(`🔑 Using school's own YCloud API key for school ${schoolId}`);
-          return school.whatsapp_api_key;
+          return school.whatsapp_api_key.trim();  // TRIM to remove whitespace
         }
       }
 
