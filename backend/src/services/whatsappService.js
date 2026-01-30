@@ -333,35 +333,35 @@ class WhatsAppService {
       const dateFormatted = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
       const school = schoolName || 'School';
 
-      // Build params based on template type
-      // Each template has different param order!
+      // IMPORTANT: Params must be sent in ORDER OF APPEARANCE in template!
+      // All templates have {{4}}=school FIRST (in header area), then body params.
+      // We send ALL as BODY params, no separate header component.
       let bodyParams;
-      let headerParam = school;  // All templates use school name in header
 
       switch (status) {
         case 'present':
-          // student_checkin_log_v1: {{1}}=name, {{2}}=time, {{3}}=date, header={{4}}=school
-          bodyParams = [studentName, time, dateFormatted];
+          // student_checkin_log_v1: ORDER = {{4}}=school, {{1}}=name, {{2}}=time, {{3}}=date
+          bodyParams = [school, studentName, time, dateFormatted];
           break;
         case 'late':
-          // attendance_late: {{1}}=name, {{2}}=date, {{3}}=time, header={{4}}=school
-          bodyParams = [studentName, dateFormatted, time];
+          // attendance_late: ORDER = {{4}}=school, {{1}}=name, {{2}}=date, {{3}}=time
+          bodyParams = [school, studentName, dateFormatted, time];
           break;
         case 'absent':
         case 'leave':
-          // attendance_absent_v1_ / attendance_leave_v1_: {{1}}=name, {{3}}=date, header={{4}}=school (no {{2}})
-          bodyParams = [studentName, dateFormatted];
+          // attendance_absent_v1_ / attendance_leave_v1_: ORDER = {{4}}=school, {{1}}=name, {{3}}=date (NO {{2}})
+          bodyParams = [school, studentName, dateFormatted];
           break;
         default:
           // Fallback to present format
-          bodyParams = [studentName, time, dateFormatted];
+          bodyParams = [school, studentName, time, dateFormatted];
       }
 
       console.log(`📱 Sending WhatsApp to ${maskPhone(parentPhone)} via YCloud...`);
-      console.log(`   Template: ${templateName}, Status: ${status}, Body: [${bodyParams.join(', ')}], Header: ${headerParam}`);
+      console.log(`   Template: ${templateName}, Status: ${status}, Params: [${bodyParams.join(', ')}]`);
 
-      // Send via YCloud with header and body params
-      const result = await this.sendTemplateMessage(phone, templateName, bodyParams, apiKey, headerParam);
+      // Send via YCloud - ALL params as body, NO header param
+      const result = await this.sendTemplateMessage(phone, templateName, bodyParams, apiKey, null);
 
       if (result.success) {
         console.log(`✅ WhatsApp sent: ${result.messageId}`);
