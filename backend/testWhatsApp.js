@@ -6,7 +6,7 @@
 const axios = require('axios');
 
 // ============ CONFIGURATION - CHANGE THESE ============
-const YCLOUD_API_KEY = '5f3261f18eb7ffcbf342cd8478ed963c';
+const YCLOUD_API_KEY = '3ce5e1037f920dde84603058e36d4fc5';
 const WHATSAPP_PHONE_ID = '919103521261'; // Your WhatsApp Business Phone ID
 const TEST_PHONE = '917889704442';        // Test phone number (with country code, no +)
 
@@ -29,7 +29,8 @@ async function testWhatsApp() {
     console.log('📱 To:', TEST_PHONE);
     console.log('📞 From:', WHATSAPP_PHONE_ID);
     console.log('📋 Template:', TEMPLATE_NAME);
-    console.log('📝 Params:', TEMPLATE_PARAMS);
+    console.log('📝 Body Params:', TEMPLATE_BODY_PARAMS);
+    console.log('📝 Header Param:', TEMPLATE_HEADER_PARAM);
     console.log('');
 
     try {

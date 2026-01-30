@@ -197,8 +197,11 @@ class WhatsAppService {
    * @param {Array} bodyParams - Parameters for BODY component {{1}}, {{2}}, {{3}}
    * @param {string} apiKey - YCloud API key
    * @param {string} headerParam - Optional parameter for HEADER component {{4}}
+   * @param {string} fromPhoneId - YCloud WhatsApp Phone ID (required)
    */
-  async sendTemplateMessage(phoneNumber, templateName, bodyParams, apiKey, headerParam = null) {
+  async sendTemplateMessage(phoneNumber, templateName, bodyParams, apiKey, headerParam = null, fromPhoneId = null) {
+    // Use provided phoneId or fall back to service phoneNumberId
+    const from = fromPhoneId || this.phoneNumberId;
     try {
       // Build components array
       const components = [];
@@ -228,6 +231,7 @@ class WhatsAppService {
       const response = await axios.post(
         `${this.apiBaseUrl}/whatsapp/messages`,
         {
+          from: from,  // WhatsApp Phone ID (required by YCloud)
           to: phoneNumber,
           type: 'template',
           template: {
