@@ -192,9 +192,39 @@ class WhatsAppService {
 
   /**
    * Send WhatsApp message using YCloud API with template
+   * @param {string} phoneNumber - Phone number to send to
+   * @param {string} templateName - Template name from Meta/YCloud
+   * @param {Array} bodyParams - Parameters for BODY component {{1}}, {{2}}, {{3}}
+   * @param {string} apiKey - YCloud API key
+   * @param {string} headerParam - Optional parameter for HEADER component {{4}}
    */
-  async sendTemplateMessage(phoneNumber, templateName, templateParams, apiKey) {
+  async sendTemplateMessage(phoneNumber, templateName, bodyParams, apiKey, headerParam = null) {
     try {
+      // Build components array
+      const components = [];
+
+      // Add HEADER component if school name is provided
+      if (headerParam) {
+        components.push({
+          type: 'header',
+          parameters: [{
+            type: 'text',
+            text: headerParam
+          }]
+        });
+      }
+
+      // Add BODY component with student details
+      if (bodyParams && bodyParams.length > 0) {
+        components.push({
+          type: 'body',
+          parameters: bodyParams.map(param => ({
+            type: 'text',
+            text: param
+          }))
+        });
+      }
+
       const response = await axios.post(
         `${this.apiBaseUrl}/whatsapp/messages`,
         {
@@ -205,15 +235,7 @@ class WhatsAppService {
             language: {
               code: 'en'  // Or 'en_US' depending on your template
             },
-            components: [
-              {
-                type: 'body',
-                parameters: templateParams.map(param => ({
-                  type: 'text',
-                  text: param
-                }))
-              }
-            ]
+            components: components
           }
         },
         {
@@ -303,17 +325,22 @@ class WhatsAppService {
       const templateName = this.templates[status] || this.templates.late;
 
       // Build template parameters
-      // Common format: {{1}} = student name, {{2}} = time, {{3}} = date, {{4}} = school name
+      // BODY: {{1}} = student name, {{2}} = time, {{3}} = date
+      // HEADER: {{4}} = school name (optional, for templates with header)
       const time = checkInTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       const dateFormatted = new Date().toLocaleDateString('en-US', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
 
-      const templateParams = [studentName, time, dateFormatted, schoolName || 'School'];
+      // Body params: {{1}}, {{2}}, {{3}}
+      const bodyParams = [studentName, time, dateFormatted];
+
+      // Header param: {{4}} - School name (for templates with header component)
+      const headerParam = schoolName || 'School';
 
       console.log(`📱 Sending WhatsApp to ${maskPhone(parentPhone)} via YCloud...`);
-      console.log(`   Template: ${templateName}, Params: [${studentName}, ${time}, ...]`);
+      console.log(`   Template: ${templateName}, Body: [${studentName}, ${time}, ${dateFormatted}], Header: ${headerParam}`);
 
-      // Send via YCloud
-      const result = await this.sendTemplateMessage(phone, templateName, templateParams, apiKey);
+      // Send via YCloud with header and body params
+      const result = await this.sendTemplateMessage(phone, templateName, bodyParams, apiKey, headerParam);
 
       if (result.success) {
         console.log(`✅ WhatsApp sent: ${result.messageId}`);

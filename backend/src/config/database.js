@@ -14,6 +14,7 @@ const pool = new Pool({
 
   // FIXED: Increased pool size for scale (was 20, now 100)
   // Supports 1000+ concurrent users instead of 20
+  
   max: parseInt(process.env.DB_POOL_MAX) || 100,
   min: parseInt(process.env.DB_POOL_MIN) || 10,
 
@@ -32,11 +33,13 @@ const pool = new Pool({
 
   // Application name for monitoring
   application_name: 'school-attendance-api'
+
 });
 
 /**
  * Test database connection
  */
+
 pool.on('connect', () => {
   console.log('✅ Database connected successfully');
 });

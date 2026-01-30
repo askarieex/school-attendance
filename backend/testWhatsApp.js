@@ -1,0 +1,97 @@
+/**
+ * WhatsApp API Test Script
+ * Run: node testWhatsApp.js
+ */
+
+const axios = require('axios');
+
+// ============ CONFIGURATION - CHANGE THESE ============
+const YCLOUD_API_KEY = '5f3261f18eb7ffcbf342cd8478ed963c';
+const WHATSAPP_PHONE_ID = '919103521261'; // Your WhatsApp Business Phone ID
+const TEST_PHONE = '917889704442';        // Test phone number (with country code, no +)
+
+// ⬇️ YOUR NEW TEMPLATE NAME (from YCloud)
+const TEMPLATE_NAME = 'student_checkin_log_v1';
+
+// Template BODY parameters (in order: {{1}}, {{2}}, {{3}})
+const TEMPLATE_BODY_PARAMS = [
+    'Ali Ahmed',           // {{1}} - Student Name
+    '09:15 AM',            // {{2}} - Check-in Time
+    '30 Jan 2026',         // {{3}} - Date
+];
+
+// Template HEADER parameter ({{4}} in your template)
+const TEMPLATE_HEADER_PARAM = 'Pioneer School';  // School name for header
+// ======================================================
+
+async function testWhatsApp() {
+    console.log('🚀 Testing WhatsApp API...');
+    console.log('📱 To:', TEST_PHONE);
+    console.log('📞 From:', WHATSAPP_PHONE_ID);
+    console.log('📋 Template:', TEMPLATE_NAME);
+    console.log('📝 Params:', TEMPLATE_PARAMS);
+    console.log('');
+
+    try {
+        const response = await axios.post(
+            'https://api.ycloud.com/v2/whatsapp/messages',
+            {
+                from: WHATSAPP_PHONE_ID,
+                to: TEST_PHONE,
+                type: 'template',
+                template: {
+                    name: TEMPLATE_NAME,
+                    language: {
+                        code: 'en'
+                    },
+                    components: [
+                        // HEADER component ({{4}} = School name)
+                        {
+                            type: 'header',
+                            parameters: [
+                                {
+                                    type: 'text',
+                                    text: TEMPLATE_HEADER_PARAM
+                                }
+                            ]
+                        },
+                        // BODY component ({{1}}, {{2}}, {{3}})
+                        {
+                            type: 'body',
+                            parameters: TEMPLATE_BODY_PARAMS.map(param => ({
+                                type: 'text',
+                                text: param
+                            }))
+                        }
+                    ]
+                }
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': YCLOUD_API_KEY
+                }
+            }
+        );
+
+        console.log('✅ SUCCESS!');
+        console.log('📨 Message ID:', response.data.id || response.data.messageId);
+        console.log('📊 Status:', response.data.status);
+        console.log('');
+        console.log('Full Response:', JSON.stringify(response.data, null, 2));
+
+    } catch (error) {
+        console.log('❌ FAILED!');
+        console.log('');
+
+        if (error.response) {
+            console.log('Status Code:', error.response.status);
+            console.log('Error:', JSON.stringify(error.response.data, null, 2));
+        } else {
+            console.log('Error:', error.message);
+        }
+    }
+}
+
+// Run the test
+testWhatsApp();
