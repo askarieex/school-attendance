@@ -8,20 +8,19 @@ const axios = require('axios');
 // ============ CONFIGURATION - CHANGE THESE ============
 const YCLOUD_API_KEY = '3ce5e1037f920dde84603058e36d4fc5';
 const WHATSAPP_PHONE_ID = '919103521261'; // Your WhatsApp Business Phone ID
-const TEST_PHONE = '917889704442';        // Test phone number (with country code, no +)
+const TEST_PHONE = '+917889704442';        // Test phone number (with country code, no +)
 
-// ⬇️ YOUR NEW TEMPLATE NAME (from YCloud)
-const TEMPLATE_NAME = 'student_checkin_log_v1';
+// ⬇️ WORKING TEMPLATE - attendance_alert_v1
+const TEMPLATE_NAME = 'attendance_alert_v1';
 
-// Template BODY parameters (in order: {{1}}, {{2}}, {{3}})
+// Template BODY parameters: {{1}}=name, {{2}}=time
 const TEMPLATE_BODY_PARAMS = [
-    'Ali Ahmed',           // {{1}} - Student Name
+    'Mohammad Askarie',           // {{1}} - Student Name
     '09:15 AM',            // {{2}} - Check-in Time
-    '30 Jan 2026',         // {{3}} - Date
 ];
 
-// Template HEADER parameter ({{4}} in your template)
-const TEMPLATE_HEADER_PARAM = 'Pioneer School';  // School name for header
+// No header for this template
+const TEMPLATE_HEADER_PARAM = null;
 // ======================================================
 
 async function testWhatsApp() {
@@ -46,16 +45,14 @@ async function testWhatsApp() {
                         code: 'en'
                     },
                     components: [
-                        // HEADER component ({{4}} = School name)
-                        {
+                        // HEADER component (school name)
+                        ...(TEMPLATE_HEADER_PARAM ? [{
                             type: 'header',
-                            parameters: [
-                                {
-                                    type: 'text',
-                                    text: TEMPLATE_HEADER_PARAM
-                                }
-                            ]
-                        },
+                            parameters: [{
+                                type: 'text',
+                                text: TEMPLATE_HEADER_PARAM
+                            }]
+                        }] : []),
                         // BODY component ({{1}}, {{2}}, {{3}})
                         {
                             type: 'body',

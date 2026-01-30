@@ -22,12 +22,12 @@ class WhatsAppService {
     this.phoneNumberId = null;
     this.wabaId = null;
 
-    // Template names for different statuses
+    // Template names for different statuses (must match YCloud templates exactly)
     this.templates = {
-      late: 'attendance_late',
-      absent: 'attendance_absent',
-      present: 'attendance_present',
-      leave: 'attendance_leave'
+      present: 'student_checkin_log_v1',    // {{1}}=name, {{2}}=time, {{3}}=date, header={{4}}=school
+      late: 'attendance_late',               // {{1}}=name, {{2}}=date, {{3}}=time, header={{4}}=school
+      absent: 'attendance_absent_v1_',       // {{1}}=name, {{3}}=date, header={{4}}=school (no {{2}})
+      leave: 'attendance_leave_v1_'          // {{1}}=name, {{3}}=date, header={{4}}=school (no {{2}})
     };
 
     // YCloud API base URL
@@ -326,22 +326,39 @@ class WhatsAppService {
       }
 
       // Get template name for this status
-      const templateName = this.templates[status] || this.templates.late;
+      const templateName = this.templates[status] || this.templates.present;
 
-      // Build template parameters
-      // BODY: {{1}} = student name, {{2}} = time, {{3}} = date
-      // HEADER: {{4}} = school name (optional, for templates with header)
+      // Format time and date
       const time = checkInTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      const dateFormatted = new Date().toLocaleDateString('en-US', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+      const dateFormatted = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
+      const school = schoolName || 'School';
 
-      // Body params: {{1}}, {{2}}, {{3}}
-      const bodyParams = [studentName, time, dateFormatted];
+      // Build params based on template type
+      // Each template has different param order!
+      let bodyParams;
+      let headerParam = school;  // All templates use school name in header
 
-      // Header param: {{4}} - School name (for templates with header component)
-      const headerParam = schoolName || 'School';
+      switch (status) {
+        case 'present':
+          // student_checkin_log_v1: {{1}}=name, {{2}}=time, {{3}}=date, header={{4}}=school
+          bodyParams = [studentName, time, dateFormatted];
+          break;
+        case 'late':
+          // attendance_late: {{1}}=name, {{2}}=date, {{3}}=time, header={{4}}=school
+          bodyParams = [studentName, dateFormatted, time];
+          break;
+        case 'absent':
+        case 'leave':
+          // attendance_absent_v1_ / attendance_leave_v1_: {{1}}=name, {{3}}=date, header={{4}}=school (no {{2}})
+          bodyParams = [studentName, dateFormatted];
+          break;
+        default:
+          // Fallback to present format
+          bodyParams = [studentName, time, dateFormatted];
+      }
 
       console.log(`📱 Sending WhatsApp to ${maskPhone(parentPhone)} via YCloud...`);
-      console.log(`   Template: ${templateName}, Body: [${studentName}, ${time}, ${dateFormatted}], Header: ${headerParam}`);
+      console.log(`   Template: ${templateName}, Status: ${status}, Body: [${bodyParams.join(', ')}], Header: ${headerParam}`);
 
       // Send via YCloud with header and body params
       const result = await this.sendTemplateMessage(phone, templateName, bodyParams, apiKey, headerParam);
