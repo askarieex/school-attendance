@@ -767,46 +767,42 @@ const markManualAttendance = async (req, res) => {
         const school = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
         const schoolName = school.rows[0]?.name || 'School';
 
-        // Only send WhatsApp for late, absent, or leave status (not for regular present)
-        if (calculatedStatus === 'late' || calculatedStatus === 'absent' || calculatedStatus === 'leave') {
-          // Try multiple phone fields in order of priority: guardian_phone > parent_phone > mother_phone
-          let phoneToUse = null;
-          if (student.guardian_phone && student.guardian_phone.trim() !== '') {
-            phoneToUse = student.guardian_phone;
-          } else if (student.parent_phone && student.parent_phone.trim() !== '') {
-            phoneToUse = student.parent_phone;
-          } else if (student.mother_phone && student.mother_phone.trim() !== '') {
-            phoneToUse = student.mother_phone;
-          }
+        // Send WhatsApp for all attendance statuses (present, late, absent, leave)
+        // Try multiple phone fields in order of priority: guardian_phone > parent_phone > mother_phone
+        let phoneToUse = null;
+        if (student.guardian_phone && student.guardian_phone.trim() !== '') {
+          phoneToUse = student.guardian_phone;
+        } else if (student.parent_phone && student.parent_phone.trim() !== '') {
+          phoneToUse = student.parent_phone;
+        } else if (student.mother_phone && student.mother_phone.trim() !== '') {
+          phoneToUse = student.mother_phone;
+        }
 
-          if (phoneToUse) {
-            console.log(`📱 Sending WhatsApp alert (async) to ${maskPhone(phoneToUse)} for ${student.full_name} (${calculatedStatus})`);
+        if (phoneToUse) {
+          console.log(`📱 Sending WhatsApp alert (async) to ${maskPhone(phoneToUse)} for ${student.full_name} (${calculatedStatus})`);
 
-            const whatsappResult = await whatsappService.sendAttendanceAlert({
-              parentPhone: phoneToUse,
-              studentName: student.full_name,
-              studentId: studentId,
-              schoolId: schoolId,
-              status: calculatedStatus,
-              checkInTime: timeToUse,
-              schoolName: schoolName,
-              date: date
-            });
+          const whatsappResult = await whatsappService.sendAttendanceAlert({
+            parentPhone: phoneToUse,
+            studentName: student.full_name,
+            studentId: studentId,
+            schoolId: schoolId,
+            status: calculatedStatus,
+            checkInTime: timeToUse,
+            schoolName: schoolName,
+            date: date
+          });
 
-            if (whatsappResult.success) {
-              if (whatsappResult.skipped) {
-                console.log(`⏭️ WhatsApp message skipped: ${whatsappResult.reason}`);
-              } else {
-                console.log(`✅ WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
-              }
+          if (whatsappResult.success) {
+            if (whatsappResult.skipped) {
+              console.log(`⏭️ WhatsApp message skipped: ${whatsappResult.reason}`);
             } else {
-              console.error(`❌ WhatsApp alert failed: ${whatsappResult.error}`);
+              console.log(`✅ WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
             }
           } else {
-            console.log(`⚠️ No phone number found for ${student.full_name}, skipping WhatsApp alert`);
+            console.error(`❌ WhatsApp alert failed: ${whatsappResult.error}`);
           }
         } else {
-          console.log(`ℹ️ Status is '${calculatedStatus}', skipping WhatsApp alert (only send for late/absent/leave)`);
+          console.log(`⚠️ No phone number found for ${student.full_name}, skipping WhatsApp alert`);
         }
       } catch (whatsappError) {
         console.error('WhatsApp alert error (non-fatal, async):', whatsappError);
