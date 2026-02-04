@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/attendance_record.dart';
 import '../models/student.dart';
 import '../models/class_info.dart';
+import '../utils/time_utils.dart';
 
 class AttendanceProvider with ChangeNotifier {
   final List<AttendanceRecord> _records = [];
@@ -18,7 +19,7 @@ class AttendanceProvider with ChangeNotifier {
 
   void _initializeDemoData() {
     // Create demo attendance records for today
-    final today = DateTime.now();
+    final today = TimeUtils.nowIST();
     for (var student in _students) {
       _records.add(AttendanceRecord(
         studentId: student.id,
@@ -34,7 +35,7 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   AttendanceRecord? getTodayAttendance(String studentId) {
-    final today = DateTime.now();
+    final today = TimeUtils.nowIST();
     try {
       return _records.firstWhere(
         (record) =>
@@ -92,7 +93,7 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   void markAttendance(String studentId, AttendanceStatus status, {bool manual = false}) {
-    final today = DateTime.now();
+    final today = TimeUtils.nowIST();
     final existingRecord = getTodayAttendance(studentId);
 
     if (existingRecord != null) {
@@ -106,7 +107,7 @@ class AttendanceProvider with ChangeNotifier {
         date: today,
         status: status,
         arrivalTime: status == AttendanceStatus.present || status == AttendanceStatus.late
-            ? DateTime.now()
+            ? TimeUtils.nowIST()
             : null,
         manuallyMarked: manual,
       ));

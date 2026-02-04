@@ -299,9 +299,9 @@ class WhatsAppService {
       }
 
       // 🔒 Deduplication check
-      const { query } = require('../config/database');
-      const normalizedPhone = this.normalizePhoneForDedup(parentPhone);
-      const today = date || new Date().toISOString().split('T')[0];
+      // ✅ FIX: Use provided date (IST) or current IST date if missing. Avoid UTC mismatch.
+      const { getCurrentDateIST } = require('../utils/timezone');
+      const today = date || getCurrentDateIST();
 
       const duplicateCheck = await query(
         `SELECT id, message_id FROM whatsapp_logs

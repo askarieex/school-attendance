@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/teacher_service.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import 'package:school_attendance/utils/logger.dart';
+import 'package:school_attendance/utils/time_utils.dart';
 import 'leave_management_screen.dart';
 
 class ClassAttendanceScreen extends StatefulWidget {
@@ -32,11 +33,11 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
     _loadStudentsAndAttendance();
   }
 
-  Future<void> _loadStudentsAndAttendance() async {
+  Future<void> _loadStudentsAndAttendance({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     try {
       // ✅ CHECK: Don't load attendance on Sunday
-      final today = DateTime.now();
+      final today = TimeUtils.nowIST();
       if (today.weekday == DateTime.sunday) {
         setState(() {
           _isLoading = false;
@@ -48,11 +49,13 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
       final sectionId = widget.classData['section_id'];
       
       // ✅ PERFORMANCE FIX: Load students and attendance IN PARALLEL
+      // ✅ FIX: Pass forceRefresh to bypass cache when user pulls to refresh
       final results = await Future.wait([
-        _teacherService.getStudentsInSection(sectionId),
+        _teacherService.getStudentsInSection(sectionId, forceRefresh: forceRefresh),
         _teacherService.getAttendanceForSection(
           sectionId,
-          DateFormat('yyyy-MM-dd').format(DateTime.now()),
+          TimeUtils.todayIST(),
+          forceRefresh: forceRefresh,
         ),
       ]);
       
@@ -88,6 +91,8 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
     _presentCount = _students.where((s) => s['status'] == 'present').length;
     _lateCount = _students.where((s) => s['status'] == 'late').length;
     _absentCount = _students.where((s) => s['status'] == 'absent').length;
+    // Note: leave count is not displayed in the summary cards currently, but if added later:
+    // _leaveCount = _students.where((s) => s['status'] == 'leave' || s['status'] == 'LV').length;
   }
 
   @override
@@ -113,19 +118,24 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _isSunday
               ? _buildSundayScreen()
-              : Column(
-                  children: [
-                    _buildSummaryCards(),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _students.length,
-                        itemBuilder: (context, index) {
-                          return _buildStudentTile(_students[index], index);
-                        },
+              // ✅ FIX: Added RefreshIndicator for pull-to-refresh
+              : RefreshIndicator(
+                  onRefresh: () => _loadStudentsAndAttendance(forceRefresh: true),
+                  color: const Color(0xFF6366F1),
+                  child: Column(
+                    children: [
+                      _buildSummaryCards(),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _students.length,
+                          itemBuilder: (context, index) {
+                            return _buildStudentTile(_students[index], index);
+                          },
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
     );
   }
@@ -196,7 +206,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
     final status = student['status'] ?? 'pending';
     final Color statusColor = status == 'present' || status == 'late'
         ? const Color(0xFF10B981)
-        : status == 'leave'
+        : (status == 'leave' || status == 'LV') // ✅ FIX: Handle 'LV' code
             ? const Color(0xFFAF52DE)
             : status == 'absent'
                 ? const Color(0xFFEF4444)

@@ -1,6 +1,7 @@
 import 'api_service.dart';
 import '../config/api_config.dart';
-import '../utils/logger.dart';
+import 'package:school_attendance/utils/logger.dart';
+import 'package:school_attendance/utils/time_utils.dart';
 
 /// Teacher Service - Handles teacher-specific API calls
 class TeacherService {
@@ -10,15 +11,17 @@ class TeacherService {
   
   /// Get teacher's assigned classes/sections
   /// GET /api/v1/teacher/my-sections (dedicated teacher sections endpoint)
-  Future<List<Map<String, dynamic>>> getTeacherAssignments() async {
+  Future<List<Map<String, dynamic>>> getTeacherAssignments({bool forceRefresh = false}) async {
     try {
-      Logger.network('Fetching teacher sections from /teacher/my-sections');
+      Logger.network('Fetching teacher sections from /teacher/my-sections${forceRefresh ? " (FORCE REFRESH)" : ""}');
 
       // ✅ PERFORMANCE: Enable caching - sections don't change frequently
+      // ✅ FIX: Support forceRefresh for pull-to-refresh
       final response = await _apiService.get(
         '/teacher/my-sections',
         requiresAuth: true,
-        useCache: true,  // ✅ ENABLE caching for better performance
+        useCache: true,
+        forceRefresh: forceRefresh,  // ✅ NEW: Bypass cache when pulling to refresh
       );
 
       Logger.success('Teacher sections response received');
@@ -39,15 +42,17 @@ class TeacherService {
   
   /// Get students in a section (Teacher-specific endpoint)
   /// GET /api/v1/teacher/sections/:sectionId/students
-  Future<List<Map<String, dynamic>>> getStudentsInSection(int sectionId) async {
+  Future<List<Map<String, dynamic>>> getStudentsInSection(int sectionId, {bool forceRefresh = false}) async {
     try {
-      Logger.network('Fetching students for section: $sectionId (teacher endpoint)');
+      Logger.network('Fetching students for section: $sectionId${forceRefresh ? " (FORCE REFRESH)" : ""}');
 
       // ✅ PERFORMANCE: Enable caching - student lists don't change frequently
+      // ✅ FIX: Support forceRefresh for pull-to-refresh
       final response = await _apiService.get(
         '/teacher/sections/$sectionId/students',
         requiresAuth: true,
-        useCache: true,  // ✅ ENABLE caching for better performance
+        useCache: true,
+        forceRefresh: forceRefresh,  // ✅ NEW: Bypass cache when needed
       );
 
       Logger.success('Students response received');
@@ -73,8 +78,8 @@ class TeacherService {
       Logger.network('Fetching today\'s attendance stats for section: $sectionId');
 
       // Get today's date in YYYY-MM-DD format
-      final today = DateTime.now();
-      final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      // Get today's date in YYYY-MM-DD format (IST)
+      final todayStr = TimeUtils.todayIST();
 
       // Get today's attendance logs
       final logs = await getAttendanceForSection(sectionId, todayStr);
@@ -121,16 +126,18 @@ class TeacherService {
 
   /// Get attendance for a section on a specific date
   /// GET /api/v1/teacher/sections/:sectionId/attendance?date=YYYY-MM-DD
-  Future<List<Map<String, dynamic>>> getAttendanceForSection(int sectionId, String date) async {
+  Future<List<Map<String, dynamic>>> getAttendanceForSection(int sectionId, String date, {bool forceRefresh = false}) async {
     try {
-      Logger.network('Fetching attendance for section: $sectionId on $date');
+      Logger.network('Fetching attendance for section: $sectionId on $date${forceRefresh ? " (FORCE REFRESH)" : ""}');
 
       // ✅ PERFORMANCE: Enable caching - attendance records are immutable for past dates
+      // ✅ FIX: Support forceRefresh for pull-to-refresh
       final response = await _apiService.get(
         '/teacher/sections/$sectionId/attendance',
         queryParams: {'date': date},
         requiresAuth: true,
-        useCache: true,  // ✅ ENABLE caching for better performance
+        useCache: true,
+        forceRefresh: forceRefresh,  // ✅ NEW: Bypass cache when needed
       );
 
       if (response['success'] == true && response['data'] != null) {
@@ -181,6 +188,12 @@ class TeacherService {
 
       if (response['success'] == true) {
         Logger.success('Attendance marked successfully');
+        
+        // ✅ FIX: Invalidate cache after marking attendance so data refreshes
+        _apiService.invalidateCache('/teacher/sections/$sectionId/attendance');
+        _apiService.invalidateCache('/teacher/dashboard/stats');
+        _apiService.invalidateCache('/teacher/dashboard/batch-attendance-stats');
+        
         return response['data'] as Map<String, dynamic>;
       }
 
@@ -194,15 +207,17 @@ class TeacherService {
   /// Get comprehensive dashboard statistics
   /// GET /api/v1/teacher/dashboard/stats
   /// Returns: totalStudents, boysCount, girlsCount, presentToday, lateToday, absentToday, leaveToday, notMarkedToday, attendancePercentage
-  Future<Map<String, dynamic>> getDashboardStats() async {
+  Future<Map<String, dynamic>> getDashboardStats({bool forceRefresh = false}) async {
     try {
-      Logger.network('Fetching dashboard statistics');
+      Logger.network('Fetching dashboard statistics${forceRefresh ? " (FORCE REFRESH)" : ""}');
 
       // ✅ PERFORMANCE: Enable caching with short TTL - dashboard updates frequently but not every second
+      // ✅ FIX: Support forceRefresh for pull-to-refresh
       final response = await _apiService.get(
         '/teacher/dashboard/stats',
         requiresAuth: true,
-        useCache: true,  // ✅ ENABLE caching for better performance (15 min TTL is fine for dashboard)
+        useCache: true,
+        forceRefresh: forceRefresh,  // ✅ NEW: Bypass cache when pulling to refresh
       );
 
       if (response['success'] == true && response['data'] != null) {
@@ -225,6 +240,7 @@ class TeacherService {
       };
     } catch (e) {
       Logger.error('Error fetching dashboard stats', e);
+      // ✅ FIX: Removed duplicate 'attendancePercentage' key
       return {
         'totalStudents': 0,
         'boysCount': 0,
@@ -235,14 +251,13 @@ class TeacherService {
         'leaveToday': 0,
         'notMarkedToday': 0,
         'attendancePercentage': 100,
-        'attendancePercentage': 100,
       };
     }
   }
   
   /// Get attendance stats for multiple sections in one request
   /// GET /api/v1/teacher/dashboard/batch-attendance-stats
-  Future<Map<String, dynamic>> getBatchAttendanceStats(List<int> sectionIds, [String? date]) async {
+  Future<Map<String, dynamic>> getBatchAttendanceStats(List<int> sectionIds, {String? date, bool forceRefresh = false}) async {
     try {
       if (sectionIds.isEmpty) return {};
 
@@ -252,9 +267,10 @@ class TeacherService {
         date = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
       }
 
-      Logger.network('Fetching batch attendance stats for sections: $sectionIds on $date');
+      Logger.network('Fetching batch attendance stats for sections: $sectionIds on $date${forceRefresh ? " (FORCE REFRESH)" : ""}');
 
       // ✅ PERFORMANCE: Enable caching - efficient batch loading
+      // ✅ FIX: Support forceRefresh for pull-to-refresh
       final response = await _apiService.get(
         ApiConfig.batchAttendanceStats,
         queryParams: {
@@ -262,7 +278,8 @@ class TeacherService {
           'date': date,
         },
         requiresAuth: true,
-        useCache: true, // ✅ ENABLE caching
+        useCache: true,
+        forceRefresh: forceRefresh, // ✅ NEW: Bypass cache when pulling to refresh
       );
 
       if (response['success'] == true && response['data'] != null) {

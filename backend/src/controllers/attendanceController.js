@@ -29,7 +29,7 @@ const logAttendance = async (req, res) => {
     if (!student) {
       return sendError(res, 'Student not found or RFID card not registered', 404);
     }
-    
+
     // Check if student already checked in today
     const today = new Date().toISOString().split('T')[0];
     const existingLog = await AttendanceLog.existsToday(student.id, today);
@@ -92,8 +92,9 @@ const logAttendance = async (req, res) => {
 
       if (!isToday) {
         console.log(`⚠️ RFID attendance logged for non-today date: ${today} (today is ${todayIST})`);
-      } else if (status === 'late') {
-        // RFID devices only mark present or late (not absent/leave), so only send WhatsApp for late
+      } else if (status === 'present' || status === 'late') {
+        // ✅ FIX: Send WhatsApp for BOTH present AND late (not just late)
+        // RFID devices mark present or late, parents want to know when child arrives
         // Try multiple phone fields in order of priority
         let phoneToUse = null;
         if (student.guardian_phone && student.guardian_phone.trim() !== '') {

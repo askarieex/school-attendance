@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../utils/logger.dart';
+import '../utils/time_utils.dart';
 
 /// Attendance Calendar - Full-featured like web dashboard
 /// - Holidays detection
@@ -24,7 +24,7 @@ class AttendanceCalendarScreen extends StatefulWidget {
 }
 
 class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
-  DateTime _selectedMonth = DateTime.now();
+  DateTime _selectedMonth = TimeUtils.nowIST();
   int? _selectedSectionId;
   List<Map<String, dynamic>> _students = [];
   Map<int, Map<int, String>> _attendanceData = {}; // {studentId: {day: status}}
@@ -97,7 +97,8 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     _horizontalGridController.addListener(() {
        if (_isSyncingBody) return;
        _isSyncingHeader = true;
-       if (_horizontalHeaderController.hasClients && _horizontalHeaderController.hasClients) {
+       // ✅ FIX: Was checking _horizontalHeaderController.hasClients twice - fixed to check _horizontalGridController
+       if (_horizontalGridController.hasClients && _horizontalHeaderController.hasClients) {
          _horizontalHeaderController.jumpTo(_horizontalGridController.offset);
        }
        _isSyncingHeader = false;
@@ -224,7 +225,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       // 🚀 ULTRA PERFORMANCE FIX: Use BATCH API instead of 30+ individual calls!
       Logger.network('Loading attendance for ${DateFormat('MMMM yyyy').format(_selectedMonth)}...');
 
-      final today = DateTime.now();
+      final today = TimeUtils.nowIST();
       final todayDate = DateTime(today.year, today.month, today.day);
 
       // Calculate date range (1st of month to today or end of month, whichever is earlier)
@@ -292,7 +293,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       Logger.info('Overriding Sundays and Holidays...');
 
       for (int day = 1; day <= daysInMonth; day++) {
-        final today = DateTime.now();
+        final today = TimeUtils.nowIST();
         final todayDate = DateTime(today.year, today.month, today.day);
         final dayDate = DateTime(year, month, day);
 
@@ -487,7 +488,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
     // ✅ SECURITY FIX: Can't edit future dates
     final selectedDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
-    final today = DateTime.now();
+    final today = TimeUtils.nowIST();
     final todayDate = DateTime(today.year, today.month, today.day);
 
     if (selectedDate.isAfter(todayDate)) {

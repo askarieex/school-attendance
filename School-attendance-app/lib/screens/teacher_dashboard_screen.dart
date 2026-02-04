@@ -1,5 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:school_attendance/utils/logger.dart';
+import 'package:school_attendance/utils/time_utils.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/teacher_service.dart';
@@ -74,7 +77,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  Future<void> _loadClasses() async {
+  Future<void> _loadClasses({bool forceRefresh = false}) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (authProvider.currentUser?.id == null) return;
 
@@ -84,16 +87,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final stopwatch = Stopwatch()..start();
 
     try {
-      // ✅ FIX: Removed teacherId param - backend uses JWT token to identify teacher
-      final assignments = await _teacherService.getTeacherAssignments();
+      // ✅ FIX: Pass forceRefresh to bypass cache on pull-to-refresh
+      final assignments = await _teacherService.getTeacherAssignments(forceRefresh: forceRefresh);
 
       // ✅ CHANGED: Show ALL assigned classes (not just form teacher)
       // This allows teachers to see all classes they're assigned to
 
       // ✅ PERFORMANCE: Load attendance stats and dashboard stats IN PARALLEL
       await Future.wait([
-        _loadAttendanceStats(assignments),  // Pass ALL assignments
-        _loadDashboardStats(),
+        _loadAttendanceStats(assignments, forceRefresh: forceRefresh),  // Pass forceRefresh
+        _loadDashboardStats(forceRefresh: forceRefresh),
       ]);
 
       setState(() {
@@ -109,9 +112,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  Future<void> _loadDashboardStats() async {
+  Future<void> _loadDashboardStats({bool forceRefresh = false}) async {
     try {
-      final stats = await _teacherService.getDashboardStats();
+      final stats = await _teacherService.getDashboardStats(forceRefresh: forceRefresh);
       setState(() {
         _dashboardStats = stats;
       });
@@ -121,7 +124,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
   }
 
-  Future<void> _loadAttendanceStats(List<Map<String, dynamic>> classes) async {
+  Future<void> _loadAttendanceStats(List<Map<String, dynamic>> classes, {bool forceRefresh = false}) async {
     final stats = <int, Map<String, int>>{};
 
     // Extract section IDs
@@ -136,7 +139,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     try {
       // ✅ PERFORMANCE: Use BATCH API to fetch all stats in ONE request
       // This saves N API calls (where N = number of classes)
-      final batchStats = await _teacherService.getBatchAttendanceStats(sectionIds);
+      // ✅ FIX: Pass forceRefresh to bypass cache on pull-to-refresh
+      final batchStats = await _teacherService.getBatchAttendanceStats(sectionIds, forceRefresh: forceRefresh);
 
       // Map batch response to local stats format
       batchStats.forEach((key, value) {
@@ -250,7 +254,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildDashboardHeader(BuildContext context, AuthProvider authProvider) {
-    final now = DateTime.now();
+    final now = TimeUtils.nowIST();
     final hour = now.hour;
     String greeting;
     if (hour < 12) {
@@ -417,7 +421,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   String _getFormattedTime() {
-    final now = DateTime.now();
+    final now = TimeUtils.nowIST();
     final hour = now.hour > 12 ? now.hour - 12 : now.hour;
     final minute = now.minute.toString().padLeft(2, '0');
     final period = now.hour >= 12 ? 'PM' : 'AM';
@@ -758,7 +762,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       body: RefreshIndicator(
-        onRefresh: _loadClasses,
+        onRefresh: () => _loadClasses(forceRefresh: true), // ✅ FIX: Bypass cache on pull-to-refresh
         color: const Color(0xFF7C3AED),
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
@@ -1306,10 +1310,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final color = colors[index % colors.length];
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => ClassAttendanceScreen(classData: classData)),
-      ),
+      onTap: () {
+        // ✅ SMART REFRESH: Refresh stats in background when returning from attendance screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ClassAttendanceScreen(classData: classData)),
+        ).then((_) {
+          // Refresh dashboard stats after returning (user may have marked attendance)
+          _loadClasses(forceRefresh: true);
+        });
+      },
       child: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
         padding: const EdgeInsets.all(16),
@@ -1644,12 +1654,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   Widget _buildPremiumClassCard(Map<String, dynamic> classData) {
     return GestureDetector(
       onTap: () {
+        // ✅ SMART REFRESH: Refresh stats in background when returning from attendance screen
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ClassAttendanceScreen(classData: classData),
           ),
-        );
+        ).then((_) {
+          // Refresh dashboard stats after returning (user may have marked attendance)
+          _loadClasses(forceRefresh: true);
+        });
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -1871,7 +1885,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   String _getFormattedDate() {
-    final now = DateTime.now();
+    final now = TimeUtils.nowIST();
     final months = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'

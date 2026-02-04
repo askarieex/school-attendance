@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { pool } = require('../config/database');
 const whatsappService = require('./whatsappService');
 const { maskPhone } = require('../utils/logger');
+const { getCurrentDateIST } = require('../utils/timezone');
 
 /**
  * AUTOMATIC ABSENCE DETECTION SERVICE
@@ -79,9 +80,12 @@ class AutoAbsenceDetectionService {
     console.log('='.repeat(70));
 
     try {
-      // Get today's date in YYYY-MM-DD format
-      const today = new Date().toISOString().split('T')[0];
-      const dayOfWeek = new Date().getDay(); // 0=Sunday, 6=Saturday
+      // Get today's date in YYYY-MM-DD format (IST timezone)
+      const today = getCurrentDateIST(); // ✅ FIX: Use IST date, not UTC
+
+      // Get day of week in IST timezone
+      const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+      const dayOfWeek = istNow.getDay(); // 0=Sunday, 6=Saturday
 
       // Skip on Sundays UNLESS forced
       if (dayOfWeek === 0 && !forceRun) {
@@ -145,8 +149,17 @@ class AutoAbsenceDetectionService {
         if (forceRun) return true; // Process all if forced
 
         // Check time match
-        const checkTimeParts = school.absence_check_time.split(':');
-        const checkHour = parseInt(checkTimeParts[0]);
+        // Check time match (Handle HH:MM:SS and HH:MM AM/PM)
+        let checkHour;
+        const timeStr = school.absence_check_time.toUpperCase();
+
+        if (timeStr.includes('PM') && !timeStr.startsWith('12')) {
+          checkHour = parseInt(timeStr.split(':')[0]) + 12;
+        } else if (timeStr.includes('AM') && timeStr.startsWith('12')) {
+          checkHour = 0; // 12 AM is 00:00
+        } else {
+          checkHour = parseInt(timeStr.split(':')[0]);
+        }
 
         if (checkHour === currentHour) {
           return true;
