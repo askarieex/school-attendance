@@ -16,10 +16,10 @@ dependencies:
   table_calendar: ^3.0.9
   http: ^1.1.0
   shared_preferences: ^2.2.2
-  # ✅ PERFORMANCE: Removed unused dependencies (saves ~2-3MB)
-  # - fl_chart (reports not implemented)
-  # - url_launcher (not used)
-  # - cached_network_image (not used)
+  # ✅ Restored for Student Profile Screen
+  fl_chart: ^0.66.0
+  url_launcher: ^6.2.4
+  cached_network_image: ^3.3.1
   # ✅ SECURITY: Secure token storage
   flutter_secure_storage: ^9.0.0
   # ✅ SECURITY: JWT token validation
@@ -27,13 +27,24 @@ dependencies:
   # ✅ PERFORMANCE: Network connectivity check
   connectivity_plus: ^5.0.2
 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
     - assets/images/logo.png
+
+flutter_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/logo.png"
+

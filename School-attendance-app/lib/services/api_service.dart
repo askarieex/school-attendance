@@ -164,6 +164,7 @@ class ApiService {
     Map<String, String>? queryParams,
     bool requiresAuth = true,
     bool useCache = true,
+    bool forceRefresh = false, // ✅ NEW: Force bypass cache (for pull-to-refresh)
   }) async {
     var url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
     if (queryParams != null) {
@@ -171,7 +172,8 @@ class ApiService {
     }
     final cacheKey = url.toString();
 
-    if (useCache && _cache.containsKey(cacheKey)) {
+    // ✅ FIX: Skip cache if forceRefresh is true (pull-to-refresh)
+    if (useCache && !forceRefresh && _cache.containsKey(cacheKey)) {
       final entry = _cache[cacheKey]!;
       if (DateTime.now().isBefore(entry.expiresAt)) {
         Logger.performance('Cache HIT: $url');

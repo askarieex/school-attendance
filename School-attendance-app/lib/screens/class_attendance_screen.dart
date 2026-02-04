@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/teacher_service.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'package:school_attendance/utils/logger.dart';
 import 'package:school_attendance/utils/time_utils.dart';
 import 'leave_management_screen.dart';
