@@ -87,15 +87,9 @@ class AutoAbsenceDetectionService {
       const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
       const dayOfWeek = istNow.getDay(); // 0=Sunday, 6=Saturday
 
-      // Skip on Sundays UNLESS forced
-      if (dayOfWeek === 0 && !forceRun) {
-        console.log('⏭️  Today is Sunday, skipping auto-absence check');
-        return;
-      }
-
-      // Check if today is a holiday (across all schools)
-      // Note: Ideally holiday checks should be per-school, but existing logic is global.
-      // Keeping it global for now, but `forceRun` overrides it.
+      // ALL SCHOOLS HOLIDAY check (Global holidays table)
+      // Note: This is still global because the 'holidays' table doesn't strictly enforce school_id in this context yet,
+      // but ideally this should also be per-school. For now, we assume if it's a holiday in the system, it's for everyone.
       if (!forceRun) {
         const holidayCheck = await pool.query(
           `SELECT COUNT(*) as count FROM holidays
@@ -104,7 +98,7 @@ class AutoAbsenceDetectionService {
         );
 
         if (parseInt(holidayCheck.rows[0].count) > 0) {
-          console.log('🎉 Today is a holiday, skipping auto-absence check');
+          console.log('🎉 Today is a global holiday, skipping auto-absence check');
           return;
         }
       }
@@ -117,6 +111,7 @@ class AutoAbsenceDetectionService {
       }));
 
       console.log(`   Current Hour (IST): ${currentHour}:00`);
+      console.log(`   Day of Week: ${dayOfWeek} (0=Sun, 6=Sat)`);
 
       let totalStudents = 0;
       let totalAbsent = 0;
@@ -124,7 +119,7 @@ class AutoAbsenceDetectionService {
       let totalErrors = 0;
       const schoolsProcessed = [];
 
-      // Get all schools with auto-absence enabled
+      // Get all schools with auto-absence enabled AND their schedule settings
       const schoolsResult = await pool.query(`
         SELECT
           s.id as school_id,
@@ -132,7 +127,9 @@ class AutoAbsenceDetectionService {
           COALESCE(ss.auto_absence_enabled, true) as auto_absence_enabled,
           COALESCE(ss.absence_grace_period_hours, 2) as grace_period_hours,
           COALESCE(ss.school_open_time, '09:00:00') as school_start_time,
-          COALESCE(ss.absence_check_time, '11:00:00') as absence_check_time
+          COALESCE(ss.absence_check_time, '11:00:00') as absence_check_time,
+          COALESCE(ss.weekly_holiday, 'Sunday') as weekly_holiday,
+          COALESCE(ss.working_days, 'Mon-Sat') as working_days
         FROM schools s
         LEFT JOIN school_settings ss ON s.id = ss.school_id
       `);
@@ -142,14 +139,35 @@ class AutoAbsenceDetectionService {
       // Filter schools to process
       const schoolsToProcess = schoolsResult.rows.filter(school => {
         if (!school.auto_absence_enabled) {
-          if (forceRun) console.log(`   ⏭️  School: ${school.school_name} - Disabled`);
+          if (forceRun) console.log(`   ⏭️  School: ${school.school_name} - Disabled.`);
           return false;
         }
 
         if (forceRun) return true; // Process all if forced
 
-        // Check time match
-        // Check time match (Handle HH:MM:SS and HH:MM AM/PM)
+        // 1. CHECK WEEKLY HOLIDAY
+        const holidayMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+        const schoolHolidayIndex = holidayMap[school.weekly_holiday] ?? 0; // Default Sunday
+
+        if (dayOfWeek === schoolHolidayIndex) {
+          console.log(`   ⏭️  School: ${school.school_name} - Today is Weekly Holiday (${school.weekly_holiday})`);
+          return false;
+        }
+
+        // 2. CHECK WORKING DAYS PATTERN being strictly followed?
+        // Patterns: 'Mon-Fri' (1-5), 'Mon-Sat' (1-6), 'Sun-Thu' (0-4)
+        // If today is NOT in the working window, skip.
+        let isWorkingDay = true;
+        if (school.working_days === 'Mon-Fri' && (dayOfWeek === 0 || dayOfWeek === 6)) isWorkingDay = false;
+        if (school.working_days === 'Mon-Sat' && dayOfWeek === 0) isWorkingDay = false;
+        if (school.working_days === 'Sun-Thu' && (dayOfWeek === 5 || dayOfWeek === 6)) isWorkingDay = false;
+
+        if (!isWorkingDay) {
+          console.log(`   ⏭️  School: ${school.school_name} - Today is not a working day (${school.working_days})`);
+          return false;
+        }
+
+        // 3. CHECK TIME MATCH
         let checkHour;
         const timeStr = school.absence_check_time.toUpperCase();
 
@@ -164,8 +182,6 @@ class AutoAbsenceDetectionService {
         if (checkHour === currentHour) {
           return true;
         } else {
-          // Debug log for skipped schools (optional, maybe too noisy)
-          // console.log(`   ⏭️  School: ${school.school_name} - Scheduled for ${checkHour}:00 (Current: ${currentHour}:00)`);
           return false;
         }
       });
