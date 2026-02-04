@@ -112,18 +112,43 @@ const AttendanceCalendar = () => {
       try {
         const logsResponse = await attendanceAPI.getRange({
           startDate,
-          endDate
+          endDate,
+          _t: new Date().getTime() // 🚀 CACHE BUSTER: Force fresh data
         });
 
         if (logsResponse.success && logsResponse.data) {
-          // Process all logs at once
-          logsResponse.data.forEach(log => {
-            if (attendanceMap[log.student_id]) {
-              // Extract day from log date (YYYY-MM-DD format)
-              const logDate = new Date(log.check_in_time || log.created_at);
-              const day = logDate.getDate();
+          // Sort logs by created_at to ensure newest records overwrite older ones
+          // (Fallback to ID if created_at is identical)
+          const sortedLogs = logsResponse.data.sort((a, b) => {
+            const dateA = new Date(a.created_at || 0);
+            const dateB = new Date(b.created_at || 0);
+            return dateA - dateB || a.id - b.id;
+          });
 
-              attendanceMap[log.student_id][day] = log.status || 'present';
+          // Process all logs at once
+          sortedLogs.forEach(log => {
+            if (attendanceMap[log.student_id]) {
+              // Extract day accurately from date string (avoid timezone shifts)
+              const dateStr = log.check_in_time || log.created_at;
+              let day;
+
+              if (dateStr && dateStr.includes('T')) {
+                // ISO String: strict parse
+                day = new Date(dateStr).getDate();
+              } else if (dateStr) {
+                // Simple date string YYYY-MM-DD or similar
+                // Use simple split to avoid timezone conversion issues
+                const parts = dateStr.split(/[-/]/);
+                if (parts.length >= 3) {
+                  day = parseInt(parts[2], 10);
+                } else {
+                  day = new Date(dateStr).getDate();
+                }
+              }
+
+              if (day) {
+                attendanceMap[log.student_id][day] = log.status || 'present';
+              }
             }
           });
         }
@@ -210,7 +235,9 @@ const AttendanceCalendar = () => {
     const icons = {
       present: <FiCheckCircle className="icon-present" title="Present" />,
       late: <FiClock className="icon-late" title="Late" />,
-      absent: <FiXCircle className="icon-absent" title="Absent" />
+      absent: <FiXCircle className="icon-absent" title="Absent" />,
+      leave: <span className="icon-leave" title="Leave">LV</span>, // Handle 'leave' string
+      LV: <span className="icon-leave" title="Leave">LV</span> // Handle 'LV' code
     };
     return icons[status] || <FiHelpCircle className="icon-unknown" />;
   };
@@ -227,6 +254,78 @@ const AttendanceCalendar = () => {
 
     return { total, present, late, absent, percentage };
   };
+
+  // Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [updating, setUpdating] = useState(false);
+
+  const handleCellClick = (student, day) => {
+    // Don't allow editing future dates
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const clickedDate = new Date(year, month, day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+
+    if (clickedDate > today) {
+      alert("Cannot mark attendance for future dates.");
+      return;
+    }
+
+    const currentStatus = attendanceData[student.id]?.[day] || '';
+
+    setSelectedCell({
+      student,
+      day,
+      date: clickedDate,
+      dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      status: currentStatus
+    });
+    setShowModal(true);
+  };
+
+  const updateStatus = async (newStatus) => {
+    if (!selectedCell) return;
+
+    try {
+      setUpdating(true);
+
+      // Call API to update status
+      const response = await attendanceAPI.manual({
+        studentId: selectedCell.student.id,
+        date: selectedCell.dateStr,
+        status: newStatus,
+        remarks: newStatus === 'leave' ? 'Manual Leave' : 'Manual Update',
+        forceUpdate: true // 🚀 Force update existing records
+      });
+
+      if (response.success) {
+        // Update local state locally for immediate UI feedback
+        setAttendanceData(prev => ({
+          ...prev,
+          [selectedCell.student.id]: {
+            ...prev[selectedCell.student.id],
+            [selectedCell.day]: newStatus
+          }
+        }));
+
+        // 🚀 FORCE REFRESH: Fetch fresh data to ensure we are in sync with backend
+        // (Sometimes backend logic like duplicate checks might alter what we expect)
+        fetchMonthlyAttendance();
+
+        setShowModal(false);
+      } else {
+        alert('Failed to update status: ' + (response.message || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Error updating status');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
 
   const handleExport = async () => {
     try {
@@ -380,7 +479,9 @@ const AttendanceCalendar = () => {
                       <td
                         key={day}
                         className={`day-cell ${isHoliday(day) ? 'holiday-cell' : ''}`}
-                        title={isHoliday(day) ? 'Holiday' : ''}
+                        title={isHoliday(day) ? 'Holiday' : 'Click to edit'}
+                        onClick={() => !isHoliday(day) && handleCellClick(student, day)}
+                        style={{ cursor: isHoliday(day) ? 'default' : 'pointer' }}
                       >
                         {getStatusIcon(attendanceData[student.id]?.[day], day)}
                       </td>
@@ -450,6 +551,63 @@ const AttendanceCalendar = () => {
           <span>Holiday</span>
         </div>
       </div>
+
+      {/* Edit Status Modal */}
+      {showModal && selectedCell && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Update Attendance</h3>
+              <button className="close-btn" onClick={() => setShowModal(false)}><FiXCircle /></button>
+            </div>
+            <div className="modal-body">
+              <p>
+                <strong>Student:</strong> {selectedCell.student.full_name}<br />
+                <strong>Date:</strong> {selectedCell.date.toLocaleDateString()}<br />
+                <strong>Current Status:</strong> {selectedCell.status || 'Not Marked'}
+              </p>
+
+              <div className="status-options">
+                <button
+                  className={`status-btn present ${selectedCell.status === 'present' ? 'active' : ''}`}
+                  onClick={() => updateStatus('present')}
+                  disabled={updating}
+                >
+                  <FiCheckCircle /> Present
+                </button>
+                <button
+                  className={`status-btn late ${selectedCell.status === 'late' ? 'active' : ''}`}
+                  onClick={() => updateStatus('late')}
+                  disabled={updating}
+                >
+                  <FiClock /> Late
+                </button>
+                <button
+                  className={`status-btn absent ${selectedCell.status === 'absent' ? 'active' : ''}`}
+                  onClick={() => updateStatus('absent')}
+                  disabled={updating}
+                >
+                  <FiXCircle /> Absent
+                </button>
+                <button
+                  className={`status-btn leave ${selectedCell.status === 'leave' || selectedCell.status === 'LV' ? 'active' : ''}`}
+                  onClick={() => updateStatus('leave')} // Use 'leave' standard code
+                  disabled={updating}
+                >
+                  <FiHelpCircle /> Leave
+                </button>
+                <button
+                  className="status-btn clear"
+                  onClick={() => updateStatus(null)} // Clear status
+                  disabled={updating}
+                >
+                  Clear Status
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

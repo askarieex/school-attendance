@@ -392,7 +392,7 @@ const startServer = async () => {
     });
 
     // Start server
-    server.listen(PORT, () => {
+    const serverInstance = server.listen(PORT, () => {
       console.log(`\n🚀 Server is running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 API Base URL: http://localhost:${PORT}/api/${API_VERSION}`);
@@ -412,6 +412,16 @@ const startServer = async () => {
       console.log(`   Time Sync (Stage 2): GET  /iclock/rtdata`);
       console.log('\n');
     });
+
+    // ✅ OPTIMIZATION: Tweak timeouts for mobile networks
+    // Mobile networks often have aggressive idle timeouts (30-60s)
+    // We set keepAliveTimeout slightly higher to ensure the server doesn't
+    // close the connection while the client is still expecting it to be open.
+    // Recommended: Client Timeout < Load Balancer/Proxy Timeout < Server Timeout
+    serverInstance.keepAliveTimeout = 65000; // 65 seconds
+    serverInstance.headersTimeout = 66000;   // 66 seconds (must be > keepAliveTimeout)
+    console.log('⚡ Optimized connection timeouts for mobile networks (65s)');
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

@@ -348,7 +348,20 @@
   display: inline-block;
 }
 
+
+.icon-leave {
+  color: #805ad5;
+  font-size: 14px;
+  font-weight: 700;
+  background: #faf5ff;
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  border: 1px solid #d6bcfa;
+}
+
 /* ⚡ LEGEND ICON FOR HOLIDAY (NEW) */
+
 .legend-icon.icon-holiday {
   color: #e11d48;
   background-color: #fff1f2;
@@ -535,6 +548,165 @@
   border-radius: 4px;
 }
 
-.calendar-table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
+
+/* ===================================
+   MODAL STYLING
+   =================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2d3748;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #a0aec0;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #e53e3e;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-body p {
+  color: #4a5568;
+  line-height: 1.6;
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+
+.status-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.status-btn {
+  padding: 12px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #f7fafc;
+  color: #4a5568;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.status-btn:hover {
+  background: #edf2f7;
+  transform: translateY(-1px);
+}
+
+.status-btn.active {
+  background: white;
+  border-color: currentColor;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Status Colors */
+.status-btn.present {
+  color: #48bb78;
+}
+
+.status-btn.present.active {
+  background: #f0fff4;
+}
+
+.status-btn.late {
+  color: #ed8936;
+}
+
+.status-btn.late.active {
+  background: #fffaf0;
+}
+
+.status-btn.absent {
+  color: #f56565;
+}
+
+.status-btn.absent.active {
+  background: #fff5f5;
+}
+
+.status-btn.leave {
+  color: #805ad5;
+}
+
+.status-btn.leave.active {
+  background: #faf5ff;
+}
+
+.status-btn.clear {
+  grid-column: 1 / -1;
+  background: #fee2e2;
+  color: #c53030;
+  margin-top: 8px;
+}
+
+.status-btn.clear:hover {
+  background: #fecaca;
+}
+
+.status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }

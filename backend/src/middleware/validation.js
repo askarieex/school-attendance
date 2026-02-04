@@ -161,7 +161,7 @@ const validateAttendance = {
 
     body('status')
       .notEmpty().withMessage('Status is required')
-      .isIn(['present', 'late', 'absent']).withMessage('Status must be present, late, or absent'),
+      .isIn(['present', 'late', 'absent', 'leave']).withMessage('Status must be present, late, absent, or leave'),
 
     body('notes')
       .optional()

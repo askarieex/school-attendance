@@ -35,16 +35,27 @@ const logAttendance = async (req, res) => {
     const existingLog = await AttendanceLog.existsToday(student.id, today);
 
     if (existingLog) {
-      return sendError(
-        res,
-        'Student already checked in today',
-        409,
-        {
-          studentName: student.full_name,
-          checkInTime: existingLog.check_in_time,
-          status: existingLog.status,
-        }
-      );
+      // ✅ FIX: "The Blocking Bug"
+      // If the existing status is 'absent' (auto-marked), allow the student to scan in!
+      // This happens if the auto-absence robot ran earlier than the student arrived.
+      if (existingLog.status === 'absent') {
+        console.log(`🔄 Overwriting 'absent' status for ${student.full_name} (student arrived late)`);
+
+        // Delete the auto-absent record so we can create a new fresh log
+        await query('DELETE FROM attendance_logs WHERE id = $1', [existingLog.id]);
+      } else {
+        // If they are already Present, Late, or Leave -> BLOCK duplicate scans
+        return sendError(
+          res,
+          'Student already checked in today',
+          409,
+          {
+            studentName: student.full_name,
+            checkInTime: existingLog.check_in_time,
+            status: existingLog.status,
+          }
+        );
+      }
     }
 
     // Get school settings to determine if late
