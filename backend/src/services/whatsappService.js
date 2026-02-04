@@ -301,7 +301,10 @@ class WhatsAppService {
       // 🔒 Deduplication check
       // ✅ FIX: Use provided date (IST) or current IST date if missing. Avoid UTC mismatch.
       const { getCurrentDateIST } = require('../utils/timezone');
+      const { query } = require('../config/database'); // ✅ FIX: Import query
       const today = date || getCurrentDateIST();
+
+      const normalizedPhone = this.normalizePhoneForDedup(phone); // ✅ FIX: Define normalizedPhone
 
       const duplicateCheck = await query(
         `SELECT id, message_id FROM whatsapp_logs
