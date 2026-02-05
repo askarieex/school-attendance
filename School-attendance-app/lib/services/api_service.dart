@@ -25,7 +25,7 @@ class ApiService {
   ApiService() {
     // ✅ CRITICAL: Create HttpClient with connection pooling
     final httpClient = HttpClient()
-      ..idleTimeout = const Duration(seconds: 15) // ⚡ Increased to 15s to allow connection reuse during reading
+      ..idleTimeout = const Duration(seconds: 15) // ⚡ 15s to allow connection reuse during reading
       ..connectionTimeout = const Duration(seconds: 30) // ⚡ Keep 30s for slow starts
       ..maxConnectionsPerHost = 5;
 
@@ -274,7 +274,7 @@ class ApiService {
     } on TimeoutException catch (e) {
       if (networkRetryCount < 2) {
         Logger.warning('Timeout, retrying... (${networkRetryCount + 1}/2)');
-        await Future.delayed(Duration(seconds: networkRetryCount + 1));
+        await Future.delayed(Duration(seconds: 1 << networkRetryCount)); // ⚡ Exponential backoff: 1s, 2s, 4s
         return await _requestWithRetry(request, requiresAuth: requiresAuth, retryCount: retryCount, networkRetryCount: networkRetryCount + 1);
       }
       Logger.error('Timeout after retries', e);
@@ -282,7 +282,7 @@ class ApiService {
     } catch (e) {
       if (networkRetryCount < 2 && e.toString().contains('SocketException')) {
         Logger.warning('Network error, retrying... (${networkRetryCount + 1}/2)');
-        await Future.delayed(Duration(seconds: networkRetryCount + 1));
+        await Future.delayed(Duration(seconds: 1 << networkRetryCount)); // ⚡ Exponential backoff: 1s, 2s, 4s
         return await _requestWithRetry(request, requiresAuth: requiresAuth, retryCount: retryCount, networkRetryCount: networkRetryCount + 1);
       }
       Logger.error('Request failed', e);

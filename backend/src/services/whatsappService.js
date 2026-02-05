@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { maskPhone } = require('../utils/logger');
+const { query } = require('../config/database');
 
 /**
  * WhatsApp Service using YCloud API (Meta WhatsApp Business API)
@@ -41,7 +42,6 @@ class WhatsAppService {
    */
   async loadSettings() {
     try {
-      const { query } = require('../config/database');
 
       const result = await query(
         `SELECT setting_key, setting_value
@@ -113,7 +113,6 @@ class WhatsAppService {
    */
   async getApiKeyForSchool(schoolId) {
     try {
-      const { query } = require('../config/database');
 
       const result = await query(
         `SELECT whatsapp_api_key, whatsapp_use_own_key
@@ -301,7 +300,7 @@ class WhatsAppService {
       // 🔒 Deduplication check
       // ✅ FIX: Use provided date (IST) or current IST date if missing. Avoid UTC mismatch.
       const { getCurrentDateIST, getStartOfDayUTC, getEndOfDayUTC } = require('../utils/timezone');
-      const { query } = require('../config/database'); // ✅ FIX: Import query
+
       const today = date || getCurrentDateIST();
 
       const normalizedPhone = this.normalizePhoneForDedup(phone); // ✅ FIX: Define normalizedPhone
@@ -401,7 +400,7 @@ class WhatsAppService {
    */
   async logMessage(phone, studentName, studentId, schoolId, status, messageId, sentVia = 'whatsapp') {
     try {
-      const { query } = require('../config/database');
+
       await query(
         `INSERT INTO whatsapp_logs (phone, student_name, student_id, school_id, status, message_id, message_type, sent_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
@@ -417,7 +416,7 @@ class WhatsAppService {
    */
   async logError(phone, studentName, studentId, schoolId, status, errorMessage) {
     try {
-      const { query } = require('../config/database');
+
       await query(
         `INSERT INTO whatsapp_logs (phone, student_name, student_id, school_id, status, error_message, sent_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW())`,

@@ -50,41 +50,67 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF2196F3),
+      backgroundColor: Colors.white,  // ✅ White background like Adtenz branding
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // School icon
+            // Logo container with app icon
             Container(
-              width: 120,
-              height: 120,
+              width: 140,
+              height: 140,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00D4FF).withOpacity(0.2),
+                    blurRadius: 30,
+                    spreadRadius: 5,
+                  ),
+                ],
               ),
-              child: const Icon(
-                Icons.school,
-                size: 80,
-                color: Color(0xFF2196F3),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Image.asset(
+                  'assets/images/app_icon.png',
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
             const SizedBox(height: 32),
 
-            // App name
+            // App name - ADTENZ branding
             const Text(
-              'School Attendance',
+              'ADTENZ',
               style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1A1A1A),  // Black text
+                letterSpacing: 2.0,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
-            // Loading indicator
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            // Tagline
+            const Text(
+              'Smarter Attendance. Smarter Schools.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF666666),
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // Loading indicator with brand color
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00D4FF)),  // Cyan brand color
+              ),
             ),
           ],
         ),
