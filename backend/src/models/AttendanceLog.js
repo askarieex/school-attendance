@@ -262,6 +262,12 @@ class AttendanceLog {
 
     const logs = rawResult.rows;
 
+    // 🔍 DEBUG: Log what we found
+    console.log(`📊 [getLogsForDateRange] school_id=${schoolId}, range=${startDate} to ${endDate}, found=${logs.length} logs`);
+    if (logs.length > 0) {
+      console.log(`   First log: student_id=${logs[0].student_id}, date=${logs[0].date}, status=${logs[0].status}`);
+    }
+
     // 2. If this is for a "Range Report" (charts/analytics), raw logs are fine.
     // BUT if the frontend Calendar expects "Holiday" blocks, we might need to inject them?
     // 
