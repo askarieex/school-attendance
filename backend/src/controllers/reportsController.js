@@ -254,7 +254,7 @@ const getMonthlyReport = async (req, res) => {
     const perfectAttendance = [];
 
     for (const student of allStudents.students) {
-      const studentLogs = attendanceLogs.logs.filter(log => log.student_id === student.id);
+      const studentLogs = logs.logs.filter(log => log.student_id === student.id);
       const presentDays = studentLogs.filter(log => log.status === 'present' || log.status === 'late').length;
       const studentAttendance = totalWorkingDays > 0 ? ((presentDays / totalWorkingDays) * 100).toFixed(1) : 0;
 
