@@ -240,9 +240,10 @@ class AttendanceLog {
     // 1. Fetch RAW logs
     const rawResult = await query(
       `SELECT
-        al.id, al.student_id, al.date,
-        TO_CHAR(al.check_in_time, 'HH12:MI AM') as check_in_time,
-        NULL as check_out_time,
+        al.id, al.student_id, 
+        TO_CHAR(al.date, 'YYYY-MM-DD') as date,
+        al.check_in_time,
+        al.check_out_time,
         al.status,
         al.created_at as timestamp,
         al.notes,
