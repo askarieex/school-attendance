@@ -520,7 +520,23 @@ const AttendanceDaily = () => {
 
   const getAttendanceRate = () => {
     if (stats.total === 0) return 0;
-    return Math.round(((stats.present + stats.late) / stats.total) * 100);
+
+    // Calculate working days (exclude weekends and holidays)
+    let workingDays = 0;
+    days.forEach(day => {
+      const weekend = isWeekend(day);
+      const holiday = holidays[day];
+      if (!weekend && !holiday) {
+        workingDays++;
+      }
+    });
+
+    // Total possible attendance marks = students × working days
+    const totalPossible = stats.total * workingDays;
+    if (totalPossible === 0) return 0;
+
+    // Rate = (present + late) / totalPossible * 100
+    return Math.round(((stats.present + stats.late) / totalPossible) * 100);
   };
 
   const calculateStudentAttendancePercentage = (studentId) => {
