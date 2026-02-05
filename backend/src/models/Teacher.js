@@ -19,8 +19,8 @@ class Teacher {
       password
     } = teacherData;
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(password || 'teacher123', 10);
+    // Hash password - ✅ STRENGTHENED: Now requires uppercase
+    const passwordHash = await bcrypt.hash(password || 'Teacher@123', 10);
 
     // Create user account first
     const userResult = await query(
@@ -37,9 +37,11 @@ class Teacher {
     const schoolName = schoolResult.rows[0].name;
     const prefix = schoolName.substring(0, 3).toUpperCase();
 
-    // Generate unique code: PRE-TIMESTAMP (e.g. MOH-172312)
-    // We use manual generation to bypass the DB trigger which is causing duplicate key errors
-    const teacherCode = `${prefix}-${Date.now().toString().slice(-6)}`;
+    // ✅ FIXED: Generate unique code using crypto (no race condition)
+    // Format: PRE-RANDOM6 (e.g. MOH-A3F7B2)
+    const crypto = require('crypto');
+    const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const teacherCode = `${prefix}-${randomHex}`;
 
     // Create teacher profile - Manual teacher_code to bypass trigger
     const teacherResult = await query(
@@ -247,21 +249,44 @@ class Teacher {
   }
 
   /**
-   * Delete (deactivate) a teacher
+   * Delete teacher permanently (CASCADE delete related records)
    */
   static async delete(id) {
-    // Deactivate teacher
-    await query(
-      'UPDATE teachers SET is_active = FALSE WHERE id = $1',
+    // Get user_id first
+    const teacherResult = await query(
+      'SELECT user_id FROM teachers WHERE id = $1',
       [id]
     );
 
-    // Deactivate user account
+    if (teacherResult.rows.length === 0) {
+      throw new Error('Teacher not found');
+    }
+
+    const userId = teacherResult.rows[0].user_id;
+
+    // CASCADE DELETE: Remove all related records
+    // 1. Remove form teacher assignments from sections
     await query(
-      `UPDATE users SET is_active = FALSE
-       FROM teachers t
-       WHERE users.id = t.user_id AND t.id = $1`,
+      'UPDATE sections SET form_teacher_id = NULL WHERE form_teacher_id = $1',
+      [userId]
+    );
+
+    // 2. Delete teacher-section assignments
+    await query(
+      'DELETE FROM teacher_class_assignments WHERE teacher_id = $1',
       [id]
+    );
+
+    // 3. Delete teacher record
+    await query(
+      'DELETE FROM teachers WHERE id = $1',
+      [id]
+    );
+
+    // 4. Delete user account permanently
+    await query(
+      'DELETE FROM users WHERE id = $1',
+      [userId]
     );
 
     return { success: true };

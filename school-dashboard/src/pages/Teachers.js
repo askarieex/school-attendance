@@ -125,7 +125,7 @@ const Teachers = () => {
     try {
       const payload = {
         ...newTeacher,
-        password: newTeacher.password || 'Teacher123'
+        password: newTeacher.password || 'Teacher@123' // ✅ FIXED: Match backend default
       };
       const response = await teachersAPI.create(payload);
       if (response.success) {
@@ -138,6 +138,8 @@ const Teachers = () => {
         });
         setFormErrors({});
         fetchTeachers();
+        // ✅ SUCCESS ALERT
+        alert('✅ Teacher created successfully!');
       }
     } catch (err) {
       console.error('Error creating teacher:', err);
@@ -152,17 +154,21 @@ const Teachers = () => {
         });
       }
       setFormErrors(newErrors);
+      // ✅ ERROR ALERT
+      alert('❌ Error: ' + newErrors.submit);
     }
   };
 
   const handleDeleteTeacher = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Are you sure? This action cannot be undone.')) return;
+    if (!window.confirm('⚠️ Are you sure? This will PERMANENTLY delete the teacher and all their assignments. This action cannot be undone.')) return;
     try {
       await teachersAPI.delete(id);
       fetchTeachers();
+      alert('✅ Teacher permanently deleted successfully!');
     } catch (err) {
       console.error('Error deleting teacher:', err);
+      alert('❌ Failed to delete teacher: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -473,12 +479,11 @@ const Teachers = () => {
                     {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
                   </div>
 
-                  {/* Password */}
                   <div className="form-group">
                     <label>Initial Password</label>
                     <input
                       type="text"
-                      placeholder="Default: teacher123"
+                      placeholder="Default: Teacher@123"
                       value={newTeacher.password}
                       onChange={(e) => setNewTeacher({ ...newTeacher, password: e.target.value })}
                       className={formErrors.password ? 'error-input' : ''}
@@ -486,7 +491,7 @@ const Teachers = () => {
                     {formErrors.password ? (
                       <span className="error-text">{formErrors.password}</span>
                     ) : (
-                      <small>Leave blank for default</small>
+                      <small>Must have uppercase, lowercase, and number (or leave blank for default)</small>
                     )}
                   </div>
 

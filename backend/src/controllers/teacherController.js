@@ -40,6 +40,21 @@ const createTeacher = async (req, res) => {
       return sendError(res, 'Full name and email are required', 400);
     }
 
+    // ✅ PRE-CHECK: Validate email uniqueness (allows re-add after permanent delete)
+    const { query } = require('../config/database');
+    const emailCheck = await query(
+      'SELECT id, full_name FROM users WHERE email = $1',
+      [teacherData.email]
+    );
+
+    if (emailCheck.rows.length > 0) {
+      return sendError(
+        res,
+        `Email ${teacherData.email} is already registered`,
+        409
+      );
+    }
+
     const teacher = await Teacher.create(teacherData, schoolId);
 
     sendSuccess(res, teacher, 'Teacher created successfully', 201);
@@ -195,7 +210,7 @@ const assignTeacherToSection = async (req, res) => {
     // SECURITY FIX: Verify section belongs to the same school
     const Section = require('../models/Section');
     const Class = require('../models/Class');
-    
+
     const section = await Section.findById(assignmentData.sectionId);
     if (!section) {
       return sendError(res, 'Section not found', 404);
