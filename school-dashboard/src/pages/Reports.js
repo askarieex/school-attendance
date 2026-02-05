@@ -532,8 +532,20 @@ const Reports = () => {
         <div className="report-grid-stats">
           <StatCard icon={FiUsers} label="Total Students" value={reportData.summary?.totalStudents} color={COLORS.primary} />
           <StatCard icon={FiClock} label="Working Days" value={reportData.summary?.totalWorkingDays} color={COLORS.info} />
-          <StatCard icon={FiCheckCircle} label="Total Present" value={reportData.summary?.totalPresent} subValue="Logs" color={COLORS.present} />
-          <StatCard icon={FiAlertTriangle} label="Avg Absent" value={Math.round(reportData.summary?.totalAbsent / reportData.summary?.totalWorkingDays || 0)} subValue="Per Day" color={COLORS.absent} />
+          <StatCard
+            icon={FiCheckCircle}
+            label="On-Time Arrivals"
+            value={reportData.summary?.totalOnTime || 0}
+            subValue={reportData.summary?.punctualityRate ? `${reportData.summary.punctualityRate}%` : '0%'}
+            color={COLORS.present}
+          />
+          <StatCard
+            icon={FiClock}
+            label="Late Arrivals"
+            value={reportData.summary?.totalLate || 0}
+            subValue={`${reportData.summary?.attendanceRate}% Overall`}
+            color={COLORS.late}
+          />
         </div>
 
         {/* 2. Charts Row: Trend + Gender */}

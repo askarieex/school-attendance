@@ -336,7 +336,11 @@ const getMonthlyReport = async (req, res) => {
         averageAttendance: parseFloat(averageAttendance),
         totalPresent,
         totalAbsent,
+        totalOnTime: logs.filter(log => log.status === 'present').length,
         totalLate: logs.filter(log => log.status === 'late').length,
+        punctualityRate: totalPresent > 0
+          ? ((logs.filter(log => log.status === 'present').length / totalPresent) * 100).toFixed(1)
+          : 0,
         attendanceRate: parseFloat(averageAttendance),
         // Additional calculations
         maxPossibleAttendance: totalWorkingDays * allStudents.total,
