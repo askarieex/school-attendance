@@ -169,7 +169,7 @@ class AttendanceLog {
         al.id, al.student_id, al.check_in_time, al.status, al.date, al.notes,
         s.full_name as student_name, s.roll_number, s.grade, s.section_id,
         sec.section_name as section_name,
-        c.name as class_name
+        c.class_name as class_name
       FROM attendance_logs al
       JOIN students s ON al.student_id = s.id
       LEFT JOIN sections sec ON s.section_id = sec.id
