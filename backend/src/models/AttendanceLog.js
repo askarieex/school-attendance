@@ -133,7 +133,7 @@ class AttendanceLog {
     const result = await query(
       `SELECT 
         c.id as class_id,
-        c.name as class_name,
+        c.class_name as class_name,
         COUNT(DISTINCT s.id) as total_students,
         COUNT(CASE WHEN al.status = 'present' THEN 1 END) as present_count,
         COUNT(CASE WHEN al.status = 'late' THEN 1 END) as late_count,
@@ -142,8 +142,8 @@ class AttendanceLog {
       LEFT JOIN students s ON s.class_id = c.id AND s.school_id = $1 AND s.is_active = TRUE
       LEFT JOIN attendance_logs al ON al.student_id = s.id AND al.date = $2
       WHERE c.school_id = $1
-      GROUP BY c.id, c.name
-      ORDER BY c.name`,
+      GROUP BY c.id, c.class_name
+      ORDER BY c.class_name`,
       [schoolId, today]
     );
 
