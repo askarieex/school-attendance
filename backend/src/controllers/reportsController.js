@@ -139,7 +139,18 @@ const getMonthlyReport = async (req, res) => {
     let totalHolidays = 0;
     let totalSundays = 0; // Keeping variable name, but now tracks 'Weekends'
 
+    // Get today's date for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to midnight for accurate date comparison
+
     dailyStats.forEach(dayStat => {
+      // Skip future dates - only count days up to today
+      const statDate = new Date(dayStat.date);
+      statDate.setHours(0, 0, 0, 0);
+      if (statDate > today) {
+        return; // Skip this day
+      }
+
       // 1. Handle Weekends
       if (dayStat.isWeekend) {
         totalSundays++; // (Tracks all weekends like Sat/Sun)
