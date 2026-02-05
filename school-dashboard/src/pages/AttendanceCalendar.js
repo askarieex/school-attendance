@@ -126,6 +126,14 @@ const AttendanceCalendar = () => {
           serverCalendar = logsResponse.data.calendar || {};
         }
 
+        // 🔍 DEBUG: Log exactly what we received
+        console.log('📊 API Response:', logsResponse);
+        console.log('📋 Fetched Logs Count:', fetchedLogs.length);
+        if (fetchedLogs.length > 0) {
+          console.log('📋 First Log Sample:', fetchedLogs[0]);
+        }
+        console.log('📅 Server Calendar Keys:', Object.keys(serverCalendar));
+
         // Store server calendar for UI rendering
         setServerCalendar(serverCalendar);
 
