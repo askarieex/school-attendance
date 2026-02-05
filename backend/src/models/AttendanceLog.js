@@ -127,6 +127,40 @@ class AttendanceLog {
   // ... (getClassStatsToday remains as is) ...
 
   /**
+   * Get today's attendance statistics broken down by class
+   */
+  static async getClassStatsToday(schoolId, today) {
+    const result = await query(
+      `SELECT 
+        c.id as class_id,
+        c.name as class_name,
+        COUNT(DISTINCT s.id) as total_students,
+        COUNT(CASE WHEN al.status = 'present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN al.status = 'late' THEN 1 END) as late_count,
+        COUNT(CASE WHEN al.status = 'absent' THEN 1 END) as absent_count
+      FROM classes c
+      LEFT JOIN students s ON s.class_id = c.id AND s.school_id = $1 AND s.is_active = TRUE
+      LEFT JOIN attendance_logs al ON al.student_id = s.id AND al.date = $2
+      WHERE c.school_id = $1
+      GROUP BY c.id, c.name
+      ORDER BY c.name`,
+      [schoolId, today]
+    );
+
+    return result.rows.map(row => ({
+      classId: row.class_id,
+      className: row.class_name,
+      totalStudents: parseInt(row.total_students) || 0,
+      presentCount: parseInt(row.present_count) || 0,
+      lateCount: parseInt(row.late_count) || 0,
+      absentCount: parseInt(row.absent_count) || 0,
+      attendanceRate: row.total_students > 0
+        ? Math.round(((parseInt(row.present_count) + parseInt(row.late_count)) / parseInt(row.total_students)) * 100)
+        : 0
+    }));
+  }
+
+  /**
    * Find all attendance logs (paginated)
    */
   static async findAll(schoolId, page = 1, limit = 20, filters = {}) {
