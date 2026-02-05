@@ -330,7 +330,7 @@ const Reports = () => {
 
           {/* Late List */}
           <div className="table-section">
-            <h3 className="section-title text-warning"><FiClock /> Late Arrivals ({pieData[2].value})</h3>
+            <h3 className="section-title text-warning"><FiClock /> Late Arrivals ({lateCount})</h3>
             <div className="logs-table-wrapper scrollable-h-400">
               <table className="logs-table">
                 <thead><tr><th>Name</th><th>Class</th><th>Time</th></tr></thead>
