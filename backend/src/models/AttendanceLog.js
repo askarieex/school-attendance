@@ -126,7 +126,96 @@ class AttendanceLog {
 
   // ... (getClassStatsToday remains as is) ...
 
-  // ... (findAll remains as is) ...
+  /**
+   * Find all attendance logs (paginated)
+   */
+  static async findAll(schoolId, page = 1, limit = 20, filters = {}) {
+    let queryText = `
+      SELECT
+        al.id, al.student_id, al.check_in_time, al.status, al.date, al.notes,
+        s.full_name as student_name, s.roll_number, s.grade, s.section_id,
+        sec.name as section_name,
+        c.name as class_name
+      FROM attendance_logs al
+      JOIN students s ON al.student_id = s.id
+      LEFT JOIN sections sec ON s.section_id = sec.id
+      LEFT JOIN classes c ON s.class_id = c.id
+      WHERE al.school_id = $1
+    `;
+    const params = [schoolId];
+    let paramCount = 1;
+
+    // Apply filters
+    if (filters.date) {
+      paramCount++;
+      queryText += ` AND al.date = $${paramCount}`;
+      params.push(filters.date);
+    }
+
+    if (filters.status) {
+      paramCount++;
+      queryText += ` AND al.status = $${paramCount}`;
+      params.push(filters.status);
+    }
+
+    if (filters.search) {
+      paramCount++;
+      queryText += ` AND (s.full_name ILIKE $${paramCount} OR s.roll_number ILIKE $${paramCount})`;
+      params.push(`%${filters.search}%`);
+    }
+
+    // Sort
+    queryText += ` ORDER BY al.date DESC, al.check_in_time DESC`;
+
+    // Pagination
+    const offset = (page - 1) * limit;
+    paramCount++;
+    queryText += ` LIMIT $${paramCount}`;
+    params.push(limit);
+
+    paramCount++;
+    queryText += ` OFFSET $${paramCount}`;
+    params.push(offset);
+
+    const result = await query(queryText, params);
+
+    // Get total count
+    let countQuery = `
+      SELECT COUNT(*)
+      FROM attendance_logs al
+      JOIN students s ON al.student_id = s.id
+      WHERE al.school_id = $1
+    `;
+    const countParams = [schoolId];
+    let countParamCount = 1;
+
+    if (filters.date) {
+      countParamCount++;
+      countQuery += ` AND al.date = $${countParamCount}`;
+      countParams.push(filters.date);
+    }
+
+    if (filters.status) {
+      countParamCount++;
+      countQuery += ` AND al.status = $${countParamCount}`;
+      countParams.push(filters.status);
+    }
+
+    if (filters.search) {
+      countParamCount++;
+      countQuery += ` AND (s.full_name ILIKE $${countParamCount} OR s.roll_number ILIKE $${countParamCount})`;
+      countParams.push(`%${filters.search}%`);
+    }
+
+    const countResult = await query(countQuery, countParams);
+
+    return {
+      logs: result.rows,
+      total: parseInt(countResult.rows[0].count)
+    };
+  }
+
+  // ... (getRecentCheckins remains as is) ...
 
   // ... (getRecentCheckins remains as is) ...
 
