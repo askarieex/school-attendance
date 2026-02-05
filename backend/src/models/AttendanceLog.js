@@ -372,20 +372,40 @@ class AttendanceLog {
    * Get attendance statistics for date range (for analytics)
    */
   static async getAnalytics(schoolId, startDate, endDate) {
-    const result = await query(
-      `SELECT
-        date,
-        status,
-        COUNT(*) as count
-       FROM attendance_logs
+    // -------------------------------------------------------------------------
+    // 🛑 NEW: centralized Logic via AttendanceCalculator
+    // -------------------------------------------------------------------------
+    const AttendanceCalculator = require('../services/attendanceCalculator');
+
+    // 1. Fetch RAW logs (lighter query than before)
+    const rawLogsResult = await query(
+      `SELECT date, status FROM attendance_logs 
        WHERE school_id = $1
-       AND date BETWEEN $2 AND $3
-       GROUP BY date, status
-       ORDER BY date DESC`,
+       AND date BETWEEN $2 AND $3`,
       [schoolId, startDate, endDate]
     );
 
-    return result.rows;
+    // 2. Generate Full Calendar (Fills Gaps)
+    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, rawLogsResult.rows);
+
+    // 3. Convert back to SQL-like rows for backward compatibility
+    // [{ date, status, count }]
+    const rows = [];
+
+    dailyStats.forEach(day => {
+      // Add real counts
+      if (day.present > 0) rows.push({ date: new Date(day.date), status: 'present', count: day.present });
+      if (day.absent > 0) rows.push({ date: new Date(day.date), status: 'absent', count: day.absent });
+      if (day.late > 0) rows.push({ date: new Date(day.date), status: 'late', count: day.late });
+
+      // Add Holiday/Weekend markers
+      // We use a count of '1' just to indicate the day exists as that type
+      if (day.isHoliday) rows.push({ date: new Date(day.date), status: 'holiday', count: 0 });
+      if (day.isWeekend) rows.push({ date: new Date(day.date), status: 'weekend', count: 0 });
+    });
+
+    // Sort by date desc
+    return rows.sort((a, b) => b.date - a.date);
   }
 }
 

@@ -8,7 +8,7 @@ class ApiConfig {
   
   // Timeout settings - Lower for faster retry on mobile (better UX)
   static const Duration connectTimeout = Duration(seconds: 10);  // ✅ Reduced from 60s
-  static const Duration receiveTimeout = Duration(seconds: 15);  // ✅ Reduced from 60s
+  static const Duration receiveTimeout = Duration(seconds: 30);  // ⚠️ MOBILE DATA FIX: 30s to account for 10s IPv6 fallback + actual request
   
   // Authentication Endpoints
   static const String login = '/auth/login';

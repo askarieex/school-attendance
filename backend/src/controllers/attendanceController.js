@@ -33,6 +33,26 @@ const logAttendance = async (req, res) => {
     // Check if student already checked in today
     // ✅ FIX: Use IST date, not UTC (server may run in UTC timezone)
     const today = getCurrentDateIST();
+
+    // -------------------------------------------------------------------------
+    // 🛑 NEW: centralized Logic via AttendanceCalculator
+    // -------------------------------------------------------------------------
+    const AttendanceCalculator = require('../services/attendanceCalculator');
+
+    // 1. CHECK DAY STATUS (Block Check-in on Holidays/Weekends)
+    // Note: We might want to allow it in "Emergency Mode", but for now we block.
+    const dayStatus = await AttendanceCalculator.getDayStatus(schoolId, today);
+
+    if (dayStatus.type === 'HOLIDAY' || dayStatus.type === 'WEEKEND') {
+      console.log(`🚫 Blocked check-in on ${dayStatus.type} (${dayStatus.name})`);
+      return sendError(
+        res,
+        `Cannot check in today: It is a ${dayStatus.name} (${dayStatus.type})`,
+        403 // Forbidden
+      );
+    }
+
+    // 2. CHECK EXISTING LOGS
     const existingLog = await AttendanceLog.existsToday(student.id, today);
 
     if (existingLog) {
@@ -59,32 +79,15 @@ const logAttendance = async (req, res) => {
       }
     }
 
-    // Get school settings to determine if late
+    // Get school settings for calculations
     const settings = await SchoolSettings.getOrCreate(schoolId);
 
     // Parse check-in time
     const checkInTime = timestamp ? new Date(timestamp) : new Date();
-    const checkInTimeOnly = checkInTime.toTimeString().split(' ')[0]; // HH:MM:SS
 
-    // Determine status (present or late)
-    let status = 'present';
-
-    if (settings.school_start_time && settings.late_threshold_min) {
-      // Parse school start time
-      const [startHour, startMin] = settings.school_start_time.split(':').map(Number);
-      const [checkHour, checkMin] = checkInTimeOnly.split(':').map(Number);
-
-      const startMinutes = startHour * 60 + startMin;
-      const checkMinutes = checkHour * 60 + checkMin;
-
-      // Calculate difference in minutes
-      const diffMinutes = checkMinutes - startMinutes;
-
-      // If arrived after threshold, mark as late
-      if (diffMinutes > settings.late_threshold_min) {
-        status = 'late';
-      }
-    }
+    // 3. CALCULATE STATUS (Present vs Late)
+    const status = AttendanceCalculator.calculateCheckInStatus(settings, checkInTime);
+    console.log(`⏱️ Computed Status: ${status} (Check-in: ${checkInTime.toLocaleTimeString()})`); // Debug log
 
     // Create attendance log
     const attendanceLog = await AttendanceLog.create({
