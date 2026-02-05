@@ -73,21 +73,30 @@ const getDailyReport = async (req, res) => {
       }
     });
 
+
+    // Calculate separate counts for On-Time vs Late
+    const onTimeStudents = present.filter(s => s.status === 'present');
+    const lateStudents = present.filter(s => s.status === 'late');
+
     const report = {
       date,
       dayType: dayStatus.type, // 'WORKING', 'HOLIDAY', 'WEEKEND'
       dayName: dayStatus.name, // e.g. "Republic Day" or "Sunday"
       totalStudents: allStudents.total,
-      presentCount: present.length,
+      presentCount: present.length, // Total Present (On-Time + Late)
+      onTimeCount: onTimeStudents.length, // Students who arrived on time
+      lateCount: lateStudents.length, // Students who arrived late
       absentCount: absent.filter(s => s.status === 'absent').length, // Only true absents
       holidayCount: absent.filter(s => s.status === 'holiday').length,
       weekendCount: absent.filter(s => s.status === 'weekend').length,
       attendanceRate: allStudents.total > 0 ? ((present.length / allStudents.total) * 100).toFixed(2) : 0,
+      punctualityRate: allStudents.total > 0 ? ((onTimeStudents.length / allStudents.total) * 100).toFixed(2) : 0,
       present,
       absent // This list now contains students with status 'absent', 'holiday', or 'weekend'
     };
 
     sendSuccess(res, report, 'Daily report generated successfully');
+
   } catch (error) {
     console.error('Get daily report error:', error);
     sendError(res, 'Failed to generate daily report', 500);

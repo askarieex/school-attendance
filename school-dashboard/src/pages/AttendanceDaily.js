@@ -521,9 +521,16 @@ const AttendanceDaily = () => {
   const getAttendanceRate = () => {
     if (stats.total === 0) return 0;
 
-    // Calculate working days (exclude weekends and holidays)
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // Calculate working days - ONLY count days up to today (don't count future days)
     let workingDays = 0;
     days.forEach(day => {
+      // Skip future days
+      if (day > todayStr) return;
+
       const weekend = isWeekend(day);
       const holiday = holidays[day];
       if (!weekend && !holiday) {
@@ -531,7 +538,7 @@ const AttendanceDaily = () => {
       }
     });
 
-    // Total possible attendance marks = students × working days
+    // Total possible attendance marks = students × working days (up to today)
     const totalPossible = stats.total * workingDays;
     if (totalPossible === 0) return 0;
 
@@ -544,7 +551,14 @@ const AttendanceDaily = () => {
     let presentCount = 0;
     let workingDays = 0;
 
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
     days.forEach(day => {
+      // Skip future days
+      if (day > todayStr) return;
+
       const holiday = holidays[day];
       const weekend = isWeekend(day);
       const leave = leaves[studentId]?.[day];

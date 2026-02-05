@@ -218,10 +218,13 @@ const Reports = () => {
       rate: stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0
     })).sort((a, b) => b.rate - a.rate);
 
+    // Use non-overlapping segments: On-Time, Late, Absent
+    const onTimeCount = reportData.onTimeCount || reportData.present?.filter(s => s.status === 'present').length || 0;
+    const lateCount = reportData.lateCount || reportData.present?.filter(s => s.status === 'late').length || 0;
     const pieData = [
-      { name: 'Present', value: reportData.presentCount || 0 },
-      { name: 'Absent', value: reportData.absentCount || 0 },
-      { name: 'Late', value: (reportData.present?.filter(s => s.status === 'late').length) || 0 }
+      { name: 'On-Time', value: onTimeCount },
+      { name: 'Late', value: lateCount },
+      { name: 'Absent', value: reportData.absentCount || 0 }
     ];
 
     return (
@@ -241,9 +244,9 @@ const Reports = () => {
 
         <div className="report-grid-stats">
           <StatCard icon={FiUsers} label="Total Students" value={reportData.totalStudents} color={COLORS.primary} />
-          <StatCard icon={FiCheckCircle} label="Present" value={reportData.presentCount} subValue={`${reportData.attendanceRate}%`} color={COLORS.present} />
+          <StatCard icon={FiCheckCircle} label="On-Time" value={onTimeCount} subValue={reportData.punctualityRate ? `${reportData.punctualityRate}%` : null} color={COLORS.present} />
+          <StatCard icon={FiClock} label="Late" value={lateCount} subValue={`${reportData.attendanceRate}%`} color={COLORS.late} />
           <StatCard icon={FiAlertTriangle} label="Absent" value={reportData.absentCount} color={COLORS.absent} />
-          <StatCard icon={FiClock} label="Late Arrivals" value={pieData[2].value} color={COLORS.late} />
         </div>
 
         {/* Breakdown Section */}
