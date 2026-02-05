@@ -69,6 +69,24 @@ const createStudent = async (req, res) => {
       return sendError(res, 'Student full name is required', 400);
     }
 
+    // Check for duplicate RFID card (IMPORTANT: allows re-adding after permanent delete)
+    if (studentData.rfidCardId) {
+      const rfidCheck = await query(
+        `SELECT id, full_name FROM students 
+         WHERE rfid_card_id = $1 
+         AND school_id = $2`,
+        [studentData.rfidCardId, schoolId]
+      );
+
+      if (rfidCheck.rows.length > 0) {
+        return sendError(
+          res,
+          `RFID ${studentData.rfidCardId} is already assigned to ${rfidCheck.rows[0].full_name}`,
+          409
+        );
+      }
+    }
+
     // Check for duplicate roll number in the same class/section
     if (studentData.rollNumber && studentData.classId) {
       const duplicateCheck = await query(
@@ -76,8 +94,7 @@ const createStudent = async (req, res) => {
          WHERE roll_number = $1 
          AND class_id = $2 
          AND section_id = $3 
-         AND school_id = $4 
-         AND is_active = TRUE`,
+         AND school_id = $4`,
         [studentData.rollNumber, studentData.classId, studentData.sectionId || null, schoolId]
       );
 
@@ -171,6 +188,25 @@ const updateStudent = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
+    // Check for duplicate RFID card (if updating RFID)
+    if (updates.rfidCardId) {
+      const rfidCheck = await query(
+        `SELECT id, full_name FROM students 
+         WHERE rfid_card_id = $1 
+         AND school_id = $2
+         AND id != $3`,
+        [updates.rfidCardId, req.tenantSchoolId, id]
+      );
+
+      if (rfidCheck.rows.length > 0) {
+        return sendError(
+          res,
+          `RFID ${updates.rfidCardId} is already assigned to ${rfidCheck.rows[0].full_name}`,
+          409
+        );
+      }
+    }
+
     // Check for duplicate roll number in the same class/section (if updating roll number)
     if (updates.rollNumber && updates.classId) {
       const duplicateCheck = await query(
@@ -179,8 +215,7 @@ const updateStudent = async (req, res) => {
          AND class_id = $2 
          AND section_id = $3 
          AND school_id = $4 
-         AND id != $5
-         AND is_active = TRUE`,
+         AND id != $5`,
         [updates.rollNumber, updates.classId, updates.sectionId || student.section_id || null, req.tenantSchoolId, id]
       );
 
@@ -295,10 +330,30 @@ const deleteStudent = async (req, res) => {
       // Don't fail the whole request if device removal fails
     }
 
-    // Now deactivate the student in database
+    // 🗑️ CASCADE DELETE: Remove all related records FIRST
+    try {
+      // 1. Delete attendance logs
+      const attendanceResult = await query(
+        'DELETE FROM attendance_logs WHERE student_id = $1',
+        [id]
+      );
+      console.log(`✅ Deleted ${attendanceResult.rowCount} attendance logs for student ${student.full_name}`);
+
+      // 2. Delete leave applications
+      const leavesResult = await query(
+        'DELETE FROM leaves WHERE student_id = $1',
+        [id]
+      );
+      console.log(`✅ Deleted ${leavesResult.rowCount} leave applications for student ${student.full_name}`);
+    } catch (cascadeError) {
+      console.error('Cascade delete error:', cascadeError);
+      return sendError(res, 'Failed to delete related student records', 500);
+    }
+
+    // Now permanently delete the student from database
     await Student.delete(id);
 
-    sendSuccess(res, null, 'Student deactivated successfully and removed from all devices');
+    sendSuccess(res, null, 'Student permanently deleted along with all related records');
   } catch (error) {
     console.error('Delete student error:', error);
     sendError(res, 'Failed to deactivate student', 500);

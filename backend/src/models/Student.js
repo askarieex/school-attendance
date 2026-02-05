@@ -4,43 +4,15 @@ class Student {
   /**
    * Create a new student
    */
-// File: /backend/src/models/Student.js
+  // File: /backend/src/models/Student.js
 
-static async create(studentData, schoolId) {
-  // 1. Read the incoming camelCase keys from the request body
-  const {
-    fullName,
-    rfidCardId,
-    classId,
-    sectionId,
-    rollNumber,
-    gender,
-    dob,
-    bloodGroup,
-    photoUrl,
-    address,
-    guardianName,
-    guardianPhone,
-    guardianEmail,
-    guardianRelation,
-    motherName,
-    motherPhone,
-  } = studentData;
-
-  // 2. Use those variables in the SQL query
-  const result = await query(
-    `INSERT INTO students (
-      full_name, rfid_card_id, class_id, section_id, roll_number,
-      gender, dob, blood_group, photo_url, address,
-      guardian_name, guardian_phone, guardian_email, guardian_relation,
-      mother_name, mother_phone, school_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-    RETURNING *`,
-    [
+  static async create(studentData, schoolId) {
+    // 1. Read the incoming camelCase keys from the request body
+    const {
       fullName,
       rfidCardId,
-      classId || null,
-      sectionId || null,
+      classId,
+      sectionId,
       rollNumber,
       gender,
       dob,
@@ -53,12 +25,40 @@ static async create(studentData, schoolId) {
       guardianRelation,
       motherName,
       motherPhone,
-      schoolId,
-    ]
-  );
+    } = studentData;
 
-  return result.rows[0];
-}
+    // 2. Use those variables in the SQL query
+    const result = await query(
+      `INSERT INTO students (
+      full_name, rfid_card_id, class_id, section_id, roll_number,
+      gender, dob, blood_group, photo_url, address,
+      guardian_name, guardian_phone, guardian_email, guardian_relation,
+      mother_name, mother_phone, school_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    RETURNING *`,
+      [
+        fullName,
+        rfidCardId,
+        classId || null,
+        sectionId || null,
+        rollNumber,
+        gender,
+        dob,
+        bloodGroup,
+        photoUrl,
+        address,
+        guardianName,
+        guardianPhone,
+        guardianEmail,
+        guardianRelation,
+        motherName,
+        motherPhone,
+        schoolId,
+      ]
+    );
+
+    return result.rows[0];
+  }
 
   /**
    * Find student by ID
@@ -238,11 +238,11 @@ static async create(studentData, schoolId) {
   }
 
   /**
-   * Delete (deactivate) student
+   * Delete student permanently (CASCADE delete related records)
    */
   static async delete(id) {
     const result = await query(
-      'UPDATE students SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      'DELETE FROM students WHERE id = $1 RETURNING *',
       [id]
     );
 
