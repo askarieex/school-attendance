@@ -1,4 +1,7 @@
-const { pool, query } = require('../src/config/database');
+const path = require('path');
+// Fix: Handle requiring from root or backend directory
+const dbPath = path.resolve(__dirname, '../src/config/database');
+const { pool, query } = require(dbPath);
 
 async function runMigration() {
     try {
