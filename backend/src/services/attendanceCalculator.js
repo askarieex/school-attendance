@@ -135,19 +135,39 @@ class AttendanceCalculator {
         // Initialize stats for every day in range
         let curr = new Date(startDate);
         const end = new Date(endDate);
-        const dayMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
-        const schoolHolidayIdx = dayMap[settings.weekly_holiday] ?? 0;
+
+        // Case-insensitive mapping
+        const dayMap = { 'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6 };
+        const holidayKey = (settings.weekly_holiday || 'Sunday').toLowerCase().trim();
+        const schoolHolidayIdx = dayMap[holidayKey] ?? 0;
 
         while (curr <= end) {
             const dateStr = curr.toISOString().split('T')[0];
             statsMap[dateStr] = { date: dateStr, present: 0, absent: 0, late: 0, holiday: 0, weekend: 0, total: 0 };
 
+            const dayOfWeek = curr.getDay();
+
             // Check Day Type
-            // Optimization: Don't call getDayStatus repeatedly in loop
+            // 1. Specific Holiday (High Priority)
             if (holidayMap[dateStr]) {
                 statsMap[dateStr].isHoliday = true;
-            } else if (curr.getDay() === schoolHolidayIdx) {
+                statsMap[dateStr].name = holidayMap[dateStr];
+            }
+            // 2. Weekly Holiday (e.g., Sunday or Friday)
+            else if (dayOfWeek === schoolHolidayIdx) {
                 statsMap[dateStr].isWeekend = true;
+                statsMap[dateStr].name = settings.weekly_holiday || 'Weekend';
+            }
+            // 3. Working Days Pattern (e.g. Mon-Fri excludes Sat/Sun)
+            else {
+                let isOffDay = false;
+                if (settings.working_days === 'Mon-Fri' && (dayOfWeek === 0 || dayOfWeek === 6)) isOffDay = true;
+                if (settings.working_days === 'Mon-Sat' && dayOfWeek === 0) isOffDay = true;
+
+                if (isOffDay) {
+                    statsMap[dateStr].isWeekend = true;
+                    statsMap[dateStr].name = 'Off Day';
+                }
             }
 
             curr.setDate(curr.getDate() + 1);

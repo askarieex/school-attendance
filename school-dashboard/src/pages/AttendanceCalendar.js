@@ -542,7 +542,7 @@ const AttendanceCalendar = () => {
         </div>
         <div className="legend-item">
           <span className="legend-icon icon-sunday">S</span>
-          <span>Sunday</span>
+          <span>Weekend</span>
         </div>
         <div className="legend-item">
           <span className="legend-icon icon-holiday">H</span>
