@@ -62,6 +62,19 @@ const Subjects = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ FRONTEND VALIDATION: Check for duplicate name
+    const trimmedName = formData.subjectName.trim();
+    const isDuplicate = subjects.some(s =>
+      s.subject_name.toLowerCase() === trimmedName.toLowerCase() &&
+      s.id !== editingSubject?.id
+    );
+
+    if (isDuplicate) {
+      alert(`❌ Subject "${trimmedName}" already exists!`);
+      return;
+    }
+
     try {
       if (editingSubject) {
         await subjectsAPI.update(editingSubject.id, formData);
@@ -76,7 +89,8 @@ const Subjects = () => {
       fetchSubjects();
     } catch (err) {
       console.error('Error saving subject:', err);
-      alert(err.message || 'Failed to save subject');
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save subject';
+      alert('❌ ' + errorMsg);
     }
   };
 
@@ -91,18 +105,33 @@ const Subjects = () => {
     setShowModal(true);
   };
 
+  // ✅ SMART DELETE: Hard delete if no assignments, soft delete if has assignments
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this subject? This will only deactivate it if it has assignments.')) {
-      return;
+    const subject = subjects.find(s => s.id === id);
+    if (!subject) return;
+
+    const hasAssignments = (subject.assignment_count || 0) > 0;
+
+    let confirmMsg;
+    if (hasAssignments) {
+      confirmMsg = `⚠️ "${subject.subject_name}" has ${subject.assignment_count} assignment(s).\n\nIt will be DEACTIVATED (not permanently deleted).\n\nContinue?`;
+    } else {
+      confirmMsg = `⚠️ PERMANENTLY DELETE "${subject.subject_name}"?\n\nNo assignments found. This cannot be undone.`;
     }
 
+    if (!window.confirm(confirmMsg)) return;
+
     try {
-      await subjectsAPI.delete(id);
-      alert('✅ Subject deleted successfully!');
+      // Hard delete if no assignments, soft delete if has assignments
+      await subjectsAPI.delete(id, { hard: !hasAssignments });
+
+      const action = hasAssignments ? 'deactivated' : 'permanently deleted';
+      alert(`✅ Subject "${subject.subject_name}" ${action} successfully!`);
       fetchSubjects();
     } catch (err) {
       console.error('Error deleting subject:', err);
-      alert(err.message || 'Failed to delete subject');
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to delete subject';
+      alert('❌ ' + errorMsg);
     }
   };
 

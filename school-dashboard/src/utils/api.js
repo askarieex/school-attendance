@@ -293,7 +293,10 @@ export const subjectsAPI = {
   getById: (id) => api.get(`/school/subjects/${id}`),
   create: (data) => api.post('/school/subjects', data),
   update: (id, data) => api.put(`/school/subjects/${id}`, data),
-  delete: (id, hard = false) => api.delete(`/school/subjects/${id}${hard ? '?hard=true' : ''}`),
+  delete: (id, options = {}) => {
+    const queryString = options.hard ? '?hard=true' : '';
+    return api.delete(`/school/subjects/${id}${queryString}`);
+  },
   createDefaults: () => api.post('/school/subjects/create-defaults', {}),
   getStatistics: () => api.get('/school/subjects/statistics'),
   getBySection: (sectionId) => api.get(`/school/subjects/section/${sectionId}`),
