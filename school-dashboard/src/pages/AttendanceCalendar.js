@@ -144,6 +144,16 @@ const AttendanceCalendar = () => {
           return dateA - dateB || a.id - b.id;
         });
 
+        // 🔍 DEBUG: Check for student ID mismatch
+        const studentIdsInMap = Object.keys(attendanceMap).map(Number);
+        const studentIdsInLogs = [...new Set(sortedLogs.map(log => log.student_id))];
+        console.log('🎓 Student IDs in attendanceMap (from students API):', studentIdsInMap);
+        console.log('📋 Student IDs in logs (from attendance API):', studentIdsInLogs);
+        const matching = studentIdsInLogs.filter(id => studentIdsInMap.includes(id));
+        const missingFromStudents = studentIdsInLogs.filter(id => !studentIdsInMap.includes(id));
+        console.log('✅ Matching IDs:', matching);
+        console.log('❌ Log IDs NOT in student list:', missingFromStudents);
+
         sortedLogs.forEach(log => {
           if (attendanceMap[log.student_id]) {
             // 🚀 FIX: Use canonical 'date' field first!
