@@ -33,18 +33,24 @@ const login = async (req, res) => {
     // Update last login
     await User.updateLastLogin(user.id);
 
-    // ✅ FIX: Get school name and current academic year for the login response
+    // ✅ FIX: Get school name, logo, and current academic year for the login response
     const { query } = require('../config/database');
     let schoolName = null;
+    let schoolLogo = null;  // ✅ NEW: For school logo
     let currentAcademicYear = null;
 
     if (user.school_id) {
+      // ✅ Get school name + logo from settings
       const schoolResult = await query(
-        'SELECT name FROM schools WHERE id = $1',
+        `SELECT s.name, ss.logo_url as school_logo 
+         FROM schools s
+         LEFT JOIN school_settings ss ON ss.school_id = s.id
+         WHERE s.id = $1`,
         [user.school_id]
       );
       if (schoolResult.rows.length > 0) {
         schoolName = schoolResult.rows[0].name;
+        schoolLogo = schoolResult.rows[0].school_logo;  // ✅ From school_settings
       }
 
       // Get current academic year
@@ -72,6 +78,7 @@ const login = async (req, res) => {
           schoolId: user.school_id,
           fullName: user.full_name,
           school_name: schoolName,  // ✅ FIX: Add school_name to login response
+          school_logo: schoolLogo,  // ✅ NEW: Add school logo URL
           currentAcademicYear: currentAcademicYear,  // ✅ FIX: Add current academic year
         },
         accessToken,
@@ -147,15 +154,20 @@ const getMe = async (req, res) => {
     // ✅ FIX: Create a mutable response object instead of modifying the user object
     const responseData = { ...user };
 
-    // Get school name and current academic year if user has a school_id
+    // Get school name, logo, and current academic year if user has a school_id
     if (user.school_id) {
+      // ✅ Get school name + logo from settings
       const schoolResult = await query(
-        'SELECT name FROM schools WHERE id = $1',
+        `SELECT s.name, ss.logo_url as school_logo 
+         FROM schools s
+         LEFT JOIN school_settings ss ON ss.school_id = s.id
+         WHERE s.id = $1`,
         [user.school_id]
       );
 
       if (schoolResult.rows.length > 0) {
         responseData.school_name = schoolResult.rows[0].name;
+        responseData.school_logo = schoolResult.rows[0].school_logo;  // ✅ From school_settings
       }
 
       // Get current academic year

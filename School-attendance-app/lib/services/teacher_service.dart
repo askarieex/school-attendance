@@ -258,7 +258,7 @@ class TeacherService {
   /// Get attendance stats for multiple sections in one request
   /// GET /api/v1/teacher/dashboard/batch-attendance-stats
   Future<Map<String, dynamic>> getBatchAttendanceStats(List<int> sectionIds, {String? date, bool forceRefresh = false}) async {
-    try {
+     try {
       if (sectionIds.isEmpty) return {};
 
       // Get today's date if not provided
@@ -288,6 +288,7 @@ class TeacherService {
 
       Logger.warning('No batch stats in response');
       return {};
+    } catch (e) {
       Logger.error('Error fetching batch stats', e);
       return {};
     }

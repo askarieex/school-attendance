@@ -267,6 +267,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     // ✅ CRITICAL FIX: Use listen: false to prevent rebuilds
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final schoolName = authProvider.currentUser?.schoolName ?? 'School';
+    final schoolLogo = authProvider.currentUser?.schoolLogo;  // ✅ NEW: Get school logo
 
     return Container(
       decoration: const BoxDecoration(
@@ -289,17 +290,59 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          // School Name - Clean text only
+          // ✅ NEW: School Logo + Name
           Expanded(
-            child: Text(
-              schoolName,
-              style: const TextStyle(
-                color: Colors.black,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+            child: Row(
+              children: [
+                // School Logo (if available)
+                if (schoolLogo != null && schoolLogo.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(right: 10),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey.shade200,
+                      child: ClipOval(
+                        child: Image.network(
+                          schoolLogo,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Fallback to icon if image fails to load
+                            return Icon(
+                              Icons.school_rounded,
+                              size: 18,
+                              color: Colors.grey.shade600,
+                            );
+                          },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                // School Name
+                Expanded(
+                  child: Text(
+                    schoolName,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
             ),
           ),
           // Academic Year - Simple text badge
@@ -827,15 +870,26 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   Widget _buildDashboardView() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final attendancePercent = (_dashboardStats['attendancePercentage'] as num? ?? 0).toDouble();
-    final presentCount = (_dashboardStats['presentToday'] ?? 0) + (_dashboardStats['lateToday'] ?? 0);
-    final lateCount = _dashboardStats['lateToday'] ?? 0;
+    
+    // ✅ REDESIGNED: Clear separation of metrics
+    final totalStudents = _dashboardStats['totalStudents'] ?? 0;
+    final presentOnly = _dashboardStats['presentToday'] ?? 0;
+    final lateOnly = _dashboardStats['lateToday'] ?? 0;
     final absentCount = _dashboardStats['absentToday'] ?? 0;
+    final leaveCount = _dashboardStats['leaveToday'] ?? 0;
+    
+    // ✅ ATTENDED = Present + Late (students who came to school)
+    final attendedCount = presentOnly + lateOnly;
+    
     final userName = authProvider.currentUser?.name ?? 'Teacher';
+    final now = TimeUtils.nowIST();
+    final formattedDate = DateFormat('EEEE, MMMM d').format(now);
+    final formattedTime = DateFormat('h:mm a').format(now);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       body: RefreshIndicator(
-        onRefresh: () => _loadClasses(forceRefresh: true), // ✅ FIX: Bypass cache on pull-to-refresh
+        onRefresh: () => _loadClasses(forceRefresh: true),
         color: const Color(0xFF7C3AED),
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
@@ -843,7 +897,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ══════════════════════════════════════════════════════════════
-              // GRADIENT HEADER - CLEAN (No duplicate icons)
+              // ✨ NEW: CLEAN HEADER WITH DATE
               // ══════════════════════════════════════════════════════════════
               Container(
                 decoration: const BoxDecoration(
@@ -860,43 +914,102 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Profile Avatar
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
-                            color: Colors.white.withOpacity(0.2),
+                        // ✨ LARGE SCHOOL LOGO
+                        _buildSchoolLogo(authProvider),
+                        const SizedBox(height: 16),
+                        
+                        // School Name
+                        Text(
+                          authProvider.currentUser?.schoolName ?? 'School',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
                           ),
-                          child: const Center(
-                            child: Icon(Icons.person_rounded, color: Colors.white, size: 26),
-                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 8),
+                        
+                        // Welcome Message
+                        Text(
+                          '👋 Welcome back, $userName',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.9),
+                            letterSpacing: 0.2,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        // ✨ NEW: Date & Time Card
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                'Welcome back,',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.white.withOpacity(0.85),
-                                  letterSpacing: 0.3,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.calendar_today_rounded,
+                                  color: Colors.white,
+                                  size: 20,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                userName,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      formattedDate,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      formattedTime,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.85),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
                                   color: Colors.white,
-                                  letterSpacing: -0.3,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'Today',
+                                  style: TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ],
@@ -909,10 +1022,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               ),
 
               // ══════════════════════════════════════════════════════════════
-              // ATTENDANCE SUMMARY CARD
+              // ✨ REDESIGNED: ATTENDANCE SUMMARY CARD
               // ══════════════════════════════════════════════════════════════
               Transform.translate(
-                offset: const Offset(0, -24),
+                offset: const Offset(0, -20),
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 20),
                   padding: const EdgeInsets.all(24),
@@ -936,6 +1049,23 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           color: Colors.grey.shade600,
                           fontWeight: FontWeight.w500,
                           letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Total Students Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '$totalStudents students total',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -966,13 +1096,70 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      // Stats Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      // ✨ NEW: 5 Metrics in Grid (2+3 layout)
+                      Column(
                         children: [
-                          _buildStatBadge('$presentCount', 'Present', const Color(0xFF10B981)),
-                          _buildStatBadge('$absentCount', 'Absent', const Color(0xFFEF4444)),
-                          _buildStatBadge('$lateCount', 'Late', const Color(0xFFF59E0B)),
+                          // Row 1: Attended + Absent
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildMetricCard(
+                                  '$attendedCount',
+                                  'Attended',
+                                  'Present + Late',
+                                  Icons.check_circle_rounded,
+                                  const Color(0xFF10B981),
+                                  const Color(0xFFD1FAE5),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildMetricCard(
+                                  '$absentCount',
+                                  'Absent',
+                                  'Didn\'t attend',
+                                  Icons.cancel_rounded,
+                                  const Color(0xFFEF4444),
+                                  const Color(0xFFFEE2E2),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Row 2: Present + Late + Leave
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildSmallMetricCard(
+                                  '$presentOnly',
+                                  'Present',
+                                  Icons.sentiment_satisfied_alt_rounded,
+                                  const Color(0xFF059669),
+                                  const Color(0xFFA7F3D0),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildSmallMetricCard(
+                                  '$lateOnly',
+                                  'Late',
+                                  Icons.schedule_rounded,
+                                  const Color(0xFFF59E0B),
+                                  const Color(0xFFFEF3C7),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildSmallMetricCard(
+                                  '$leaveCount',
+                                  'Leave',
+                                  Icons.event_busy_rounded,
+                                  const Color(0xFF8B5CF6),
+                                  const Color(0xFFEDE9FE),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ],
@@ -984,7 +1171,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               // QUICK ACTIONS
               // ══════════════════════════════════════════════════════════════
               const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: Text(
                   'Quick Actions',
                   style: TextStyle(
@@ -1313,6 +1500,98 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ✨ NEW: Large Metric Card (for Attended/Absent)
+  Widget _buildMetricCard(String value, String label, String subtitle, IconData icon, Color color, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color.withOpacity(0.8),
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withOpacity(0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✨ NEW: Small Metric Card (for Present/Late/Leave)
+  Widget _buildSmallMetricCard(String value, String label, IconData icon, Color color, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color.withOpacity(0.7),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2149,6 +2428,71 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
     ];
     return '${weekDays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+  }
+
+  /// ✨ Build School Logo - 80x80px circular logo
+  Widget _buildSchoolLogo(AuthProvider authProvider) {
+    final schoolLogo = authProvider.currentUser?.schoolLogo;
+    
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          width: 3,
+          color: Colors.white.withOpacity(0.3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: schoolLogo != null && schoolLogo.isNotEmpty
+            ? Image.network(
+                schoolLogo,
+                width: 80,
+                height: 80,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildLogoFallback();
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _buildLogoFallback();
+                },
+              )
+            : _buildLogoFallback(),
+      ),
+    );
+  }
+
+  /// Fallback logo when image not available
+  Widget _buildLogoFallback() {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.9),
+            Colors.white.withOpacity(0.7),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.school_rounded,
+          size: 40,
+          color: const Color(0xFF8B5CF6),
+        ),
+      ),
+    );
   }
 }
 

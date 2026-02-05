@@ -115,6 +115,7 @@ class AuthProvider with ChangeNotifier {
           name: user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],  // ✅ FIX: Use snake_case from API
+          schoolLogo: user['school_logo'],  // ✅ NEW: School logo URL
           currentAcademicYear: user['currentAcademicYear'],  // ✅ NEW: Academic year
         );
 
@@ -278,6 +279,7 @@ class AuthProvider with ChangeNotifier {
           name: user['full_name'] ?? user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],
+          schoolLogo: user['school_logo'],  // ✅ NEW: School logo URL
           currentAcademicYear: user['currentAcademicYear'],
         );
         
