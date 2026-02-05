@@ -138,7 +138,8 @@ const AttendanceCalendar = () => {
 
         sortedLogs.forEach(log => {
           if (attendanceMap[log.student_id]) {
-            const dateStr = log.check_in_time || log.created_at;
+            // 🚀 FIX: Use canonical 'date' field first!
+            const dateStr = log.date || log.check_in_time || log.created_at;
             let day;
 
             if (dateStr && dateStr.includes('T')) {
