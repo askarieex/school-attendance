@@ -589,9 +589,32 @@ const getAttendanceRange = async (req, res) => {
       return sendError(res, 'Start date and end date are required', 400);
     }
 
+    // 1. Get raw logs (existing behavior)
     const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
 
-    sendSuccess(res, logs, 'Attendance logs retrieved successfully');
+    // 2. 🛑 ENHANCEMENT: Get Calendar Meta (Holidays/Weekends)
+    const AttendanceCalculator = require('../services/attendanceCalculator');
+    // We pass empty logs array because we just want the DAY STATUS mapping, not the aggregates for students
+    // Actually, generateMonthlyCalendar aggregates stats.
+    // What we really want is just "For each day in range, is it Holiday/Weekend?"
+    // AttendanceCalculator has 'generateMonthlyCalendar' which returns an array of day stats.
+    const calendarStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, []);
+
+    // Transform to simple map: { '2025-02-01': { type: 'WEEKEND', name: 'Sunday' } }
+    const calendarMeta = {};
+    calendarStats.forEach(day => {
+      if (day.isHoliday) {
+        calendarMeta[day.date] = { type: 'HOLIDAY', name: day.name || 'Holiday' };
+      } else if (day.isWeekend) {
+        calendarMeta[day.date] = { type: 'WEEKEND', name: day.name || 'Weekend' };
+      }
+    });
+
+    sendSuccess(res, {
+      logs: logs,
+      calendar: calendarMeta // Frontend can use this to color-code days!
+    }, 'Attendance logs retrieved successfully');
+
   } catch (error) {
     console.error('Get attendance range error:', error);
     sendError(res, 'Failed to retrieve attendance logs', 500);

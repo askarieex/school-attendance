@@ -30,6 +30,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   List<Map<String, dynamic>> _students = [];
   Map<int, Map<int, String>> _attendanceData = {}; // {studentId: {day: status}}
   List<String> _holidays = []; // List of holiday dates "YYYY-MM-DD"
+  Set<String> _weekendDates = {}; // Set of weekend dates "YYYY-MM-DD"
   bool _isLoading = false;
   
   // Stats
@@ -229,10 +230,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       final today = TimeUtils.nowIST();
       final todayDate = DateTime(today.year, today.month, today.day);
 
-      // Calculate date range (1st of month to today or end of month, whichever is earlier)
+      // Calculate date range (Always fetch full month to get future Holidays/Weekends)
       final startDate = DateTime(year, month, 1);
       final endOfMonth = DateTime(year, month, daysInMonth);
-      final endDate = endOfMonth.isBefore(todayDate) ? endOfMonth : todayDate;
+      final endDate = endOfMonth; // ✅ Always fetch full month for correct calendar rendering
 
       // Skip if start date is in future
       if (startDate.isAfter(todayDate)) {
@@ -242,83 +243,108 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         final startDateStr = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
         final endDateStr = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
 
-        Logger.network('Fetching attendance range: $startDateStr to $endDateStr');
-
-        try {
-          final response = await widget.apiService.get(
-            '/teacher/sections/$_selectedSectionId/attendance/range?startDate=$startDateStr&endDate=$endDateStr',
-            requiresAuth: true,
-            useCache: true, // ✅ Cache for 5 minutes
-          );
-
-          if (response['success'] == true && response['data'] != null) {
-            final logs = response['data'] as List;
-
-            Logger.success('Received ${logs.length} attendance records from batch API');
-
-            // Map logs to students and days
-            for (var log in logs) {
-              final studentId = int.tryParse(log['student_id'].toString()); // ✅ Force int
-              final status = log['status'];
-              final dateStr = log['date'] as String;
-
-              if (studentId == null || !attendanceMap.containsKey(studentId)) {
-                continue;
+          Logger.network('Fetching attendance range: $startDateStr to $endDateStr');
+        
+          try {
+            final response = await widget.apiService.get(
+              '/teacher/sections/$_selectedSectionId/attendance/range?startDate=$startDateStr&endDate=$endDateStr',
+              requiresAuth: true,
+              useCache: true, // ✅ Cache for 5 minutes
+            );
+        
+            Map<String, dynamic> calendarMeta = {};
+        
+            if (response['success'] == true && response['data'] != null) {
+              // ✅ HANDLE NEW API RESPONSE STRUCTURE ({ logs: [], calendar: {} })
+              List logs = [];
+              if (response['data'] is Map) {
+                logs = response['data']['logs'] ?? [];
+                calendarMeta = Map<String, dynamic>.from(response['data']['calendar'] ?? {});
+              } else if (response['data'] is List) {
+                // Fallback for old API if needed (though we updated it)
+                logs = response['data'];
               }
+        
+              Logger.success('Received ${logs.length} attendance records and ${calendarMeta.length} calendar entries');
 
-              // Extract day from date string (YYYY-MM-DD)
-              final logDate = DateTime.parse(dateStr);
-              final day = logDate.day;
-
-              // Map status to our format
-              if (status == 'present') {
-                attendanceMap[studentId]![day] = 'P';
-              } else if (status == 'late') {
-                attendanceMap[studentId]![day] = 'L';
-              } else if (status == 'absent') {
-                attendanceMap[studentId]![day] = 'A';
-              } else if (status == 'leave') {
-                attendanceMap[studentId]![day] = 'LV';
+              // ✅ Populate Holidays and Weekends from Metadata
+              _holidays.clear();
+              _weekendDates.clear();
+              
+              calendarMeta.forEach((date, meta) {
+                if (meta['type'] == 'HOLIDAY') {
+                  _holidays.add(date);
+                } else if (meta['type'] == 'WEEKEND') {
+                  _weekendDates.add(date);
+                }
+              });
+        
+              // Map logs to students and days
+              for (var log in logs) {
+                final studentId = int.tryParse(log['student_id'].toString());
+                final status = log['status'];
+                final dateStr = log['date'] as String;
+        
+                if (studentId == null || !attendanceMap.containsKey(studentId)) {
+                  continue;
+                }
+        
+                // Extract day from date string (YYYY-MM-DD)
+                final logDate = DateTime.parse(dateStr);
+                final day = logDate.day;
+        
+                // Map status to our format
+                if (status == 'present') {
+                  attendanceMap[studentId]![day] = 'P';
+                } else if (status == 'late') {
+                  attendanceMap[studentId]![day] = 'L';
+                } else if (status == 'absent') {
+                  attendanceMap[studentId]![day] = 'A';
+                } else if (status == 'leave') {
+                  attendanceMap[studentId]![day] = 'LV';
+                }
               }
             }
-
-            Logger.performance('Batch API loaded successfully! (1 request instead of $daysInMonth)');
+        
+            // ✅ CRITICAL FIX: Override Sundays and Holidays using SERVER DATA
+            // This ensures correct display even if there's bad data in the database
+            Logger.info('Overriding Holidays/Weekends using Server Meta...');
+        
+            for (int day = 1; day <= daysInMonth; day++) {
+              final today = TimeUtils.nowIST();
+              final todayDate = DateTime(today.year, today.month, today.day);
+              final dayDate = DateTime(year, month, day);
+              final dateStr = '${year}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+        
+              // Skip future dates
+              if (dayDate.isAfter(todayDate)) {
+                continue;
+              }
+              
+              // Check Server Meta
+              final dayMeta = calendarMeta[dateStr];
+              
+              if (dayMeta != null) {
+                if (dayMeta['type'] == 'WEEKEND') {
+                   for (var student in students) attendanceMap[student['id']]![day] = 'S';
+                } else if (dayMeta['type'] == 'HOLIDAY') {
+                   for (var student in students) attendanceMap[student['id']]![day] = 'H';
+                }
+              } else {
+                 // Fallback to local check if no meta (shouldn't happen for valid range)
+                 // But keep it compatible just in case
+                 if (_isSunday(day)) {
+                   for (var student in students) attendanceMap[student['id']]![day] = 'S';
+                 } else if (_isHoliday(day)) {
+                   for (var student in students) attendanceMap[student['id']]![day] = 'H';
+                 }
+              }
+            }
+        
+          } catch (e) {
+            Logger.error('Error fetching attendance range', e);
           }
-        } catch (e) {
-          Logger.error('Error fetching attendance range', e);
         }
-      }
-
-      // ✅ CRITICAL FIX: Override Sundays and Holidays AFTER loading API data
-      // This ensures correct display even if there's bad data in the database
-      Logger.info('Overriding Sundays and Holidays...');
-
-      for (int day = 1; day <= daysInMonth; day++) {
-        final today = TimeUtils.nowIST();
-        final todayDate = DateTime(today.year, today.month, today.day);
-        final dayDate = DateTime(year, month, day);
-
-        // Skip future dates
-        if (dayDate.isAfter(todayDate)) {
-          continue;
-        }
-
-        // OVERRIDE with Sunday marker (even if API returned data)
-        if (_isSunday(day)) {
-          for (var student in students) {
-            attendanceMap[student['id']]![day] = 'S';
-          }
-          Logger.info('  Day $day marked as Sunday');
-        }
-
-        // OVERRIDE with Holiday marker (even if API returned data)
-        if (_isHoliday(day)) {
-          for (var student in students) {
-            attendanceMap[student['id']]![day] = 'H';
-          }
-          Logger.info('  Day $day marked as Holiday');
-        }
-      }
       
       _calculateStats(attendanceMap, daysInMonth);
       
@@ -379,8 +405,18 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     }
   }
   
-  /// Check if day is Sunday
+  /// Check if day is Sunday/Weekend
   bool _isSunday(int day) {
+    // If we have loaded data, use the server-provided weekend dates
+    // This allows for working Sundays if configured
+    if (_weekendDates.isNotEmpty || _holidays.isNotEmpty) {
+      final year = _selectedMonth.year;
+      final month = _selectedMonth.month;
+      final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+      return _weekendDates.contains(dateStr);
+    }
+    
+    // Fallback only if no data (e.g. before load)
     final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
     return date.weekday == DateTime.sunday;
   }
@@ -470,7 +506,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     if (currentStatus == 'S') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cannot edit Sunday'),
+          content: Text('Cannot edit Weekend'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -1125,7 +1161,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                         final day = index + 1;
                         final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
                         final dayName = DateFormat('EEE').format(date);
-                        final isSunday = date.weekday == DateTime.sunday;
+                        final isSunday = _isSunday(day); // ✅ Use dynamic check
                         final isHoliday = _isHoliday(day);
 
                         return Container(

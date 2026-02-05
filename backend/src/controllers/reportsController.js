@@ -1,5 +1,6 @@
 const AttendanceLog = require('../models/AttendanceLog');
 const Student = require('../models/Student');
+const AttendanceCalculator = require('../services/attendanceCalculator');
 const { sendSuccess, sendError } = require('../utils/response');
 const { query } = require('../config/database');
 
@@ -29,11 +30,19 @@ const getDailyReport = async (req, res) => {
       attendanceMap.set(log.student_id, log);
     });
 
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator to get Day Status (Holiday/Weekend)
+    // -------------------------------------------------------------------------
+    // Check if the requested date is Working/Holiday/Weekend
+    const dayStatus = await AttendanceCalculator.getDayStatus(schoolId, date);
+    // dayStatus = { type: 'HOLIDAY'|'WEEKEND'|'WORKING', name: '...' }
+
     // Build report with present and absent students
     const present = [];
-    const absent = [];
+    const absent = []; // Renamed contextually: "absent or holiday/weekend"
 
     allStudents.students.forEach(student => {
+      // 1. Check for Log (Present/Late)
       if (attendanceMap.has(student.id)) {
         const log = attendanceMap.get(student.id);
         present.push({
@@ -43,18 +52,39 @@ const getDailyReport = async (req, res) => {
           status: log.status
         });
       } else {
-        absent.push(student);
+        // 2. No Log Found -> Check Day Status
+        let status = 'absent'; // Default
+        let notes = null;
+
+        if (dayStatus.type === 'HOLIDAY') {
+          status = 'holiday';
+          notes = dayStatus.name;
+        } else if (dayStatus.type === 'WEEKEND') {
+          status = 'weekend';
+          notes = dayStatus.name;
+        }
+
+        // Push to "absent" list but with correct status
+        absent.push({
+          ...student,
+          status: status,
+          notes: notes
+        });
       }
     });
 
     const report = {
       date,
+      dayType: dayStatus.type, // 'WORKING', 'HOLIDAY', 'WEEKEND'
+      dayName: dayStatus.name, // e.g. "Republic Day" or "Sunday"
       totalStudents: allStudents.total,
       presentCount: present.length,
-      absentCount: absent.length,
+      absentCount: absent.filter(s => s.status === 'absent').length, // Only true absents
+      holidayCount: absent.filter(s => s.status === 'holiday').length,
+      weekendCount: absent.filter(s => s.status === 'weekend').length,
       attendanceRate: allStudents.total > 0 ? ((present.length / allStudents.total) * 100).toFixed(2) : 0,
       present,
-      absent
+      absent // This list now contains students with status 'absent', 'holiday', or 'weekend'
     };
 
     sendSuccess(res, report, 'Daily report generated successfully');
@@ -86,73 +116,56 @@ const getMonthlyReport = async (req, res) => {
 
     // Get attendance logs for the entire month
     const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
-    const attendanceLogs = { logs };
 
-    // Get holidays for the month to exclude from working days
-    const holidaysResponse = await query(
-      `SELECT holiday_date FROM holidays 
-       WHERE school_id = $1 
-       AND holiday_date >= $2 
-       AND holiday_date <= $3
-       AND is_active = TRUE`,
-      [schoolId, startDate, endDate]
-    );
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator for Daily Stats & Working Day Logic
+    // -------------------------------------------------------------------------
+    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logs);
 
-    console.log(`🎉 Found ${holidaysResponse.rows.length} holidays in ${year}-${month}`);
-
-    const holidayDates = new Set(
-      holidaysResponse.rows.map(h => new Date(h.holiday_date).toISOString().split('T')[0])
-    );
-
-    // Build daily data
+    // Build daily data from Calculator results
     const dailyData = [];
     let totalPresent = 0;
     let totalAbsent = 0;
     let totalWorkingDays = 0;
     let totalHolidays = 0;
-    let totalSundays = 0;
+    let totalSundays = 0; // Keeping variable name, but now tracks 'Weekends'
 
-    for (let day = 1; day <= lastDay; day++) {
-      const currentDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayOfWeek = new Date(currentDate).getDay();
-
-      // Skip Sundays (0 = Sunday)
-      if (dayOfWeek === 0) {
-        totalSundays++;
-        continue;
+    dailyStats.forEach(dayStat => {
+      // 1. Handle Weekends
+      if (dayStat.isWeekend) {
+        totalSundays++; // (Tracks all weekends like Sat/Sun)
+        return;
       }
 
-      // Skip Holidays
-      if (holidayDates.has(currentDate)) {
+      // 2. Handle Holidays
+      if (dayStat.isHoliday) {
         totalHolidays++;
-        continue;
+        return;
       }
 
+      // 3. Working Day
       totalWorkingDays++;
 
-      // Count attendance for this day
-      const dayLogs = attendanceLogs.logs.filter(log => {
-        const logDate = new Date(log.date).toISOString().split('T')[0];
-        return logDate === currentDate;
-      });
+      const present = dayStat.present + dayStat.late;
+      const absent = allStudents.total - present; // Calculate absent based on total students
+      // Note: dayStat.absent comes from explicit "absent" logs (e.g. auto–absence). 
+      // Implicit absence (no log) is covered by (Total - Present).
 
-      const present = dayLogs.filter(log => log.status === 'present' || log.status === 'late').length;
-      const absent = allStudents.total - present;
       const percentage = allStudents.total > 0 ? Math.round((present / allStudents.total) * 100) : 0;
 
       totalPresent += present;
       totalAbsent += absent;
 
       dailyData.push({
-        date: currentDate,
-        dayOfWeek: new Date(currentDate).toLocaleDateString('en-IN', { weekday: 'short' }),
+        date: dayStat.date,
+        dayOfWeek: new Date(dayStat.date).toLocaleDateString('en-IN', { weekday: 'short' }),
         present,
         absent,
         percentage,
         isWeekend: false,
         isHoliday: false
       });
-    }
+    });
 
     const averageAttendance = totalWorkingDays > 0
       ? ((totalPresent / (totalWorkingDays * allStudents.total)) * 100).toFixed(1)
@@ -413,85 +426,71 @@ const getStudentReport = async (req, res) => {
       studentId: studentId
     });
 
-    // Calculate working days in the date range
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator for Single Student logic
+    // -------------------------------------------------------------------------
+    // We pass ONLY this student's logs to the calculator, so the result is just for them.
+    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logs.logs);
+
     let totalWorkingDays = 0;
-
-    // Get holidays
-    const holidaysResponse = await query(
-      `SELECT holiday_date FROM holidays 
-       WHERE school_id = $1 
-       AND holiday_date >= $2 
-       AND holiday_date <= $3
-       AND is_active = TRUE`,
-      [schoolId, startDate, endDate]
-    );
-
-    const holidayDates = new Set(
-      holidaysResponse.rows.map(h => new Date(h.holiday_date).toISOString().split('T')[0])
-    );
-
-    // Count working days (exclude Sundays and holidays)
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      const dateStr = d.toISOString().split('T')[0];
-
-      if (dayOfWeek !== 0 && !holidayDates.has(dateStr)) {
-        totalWorkingDays++;
-      }
-    }
-
-    // Calculate statistics
-    const presentDays = logs.logs.filter(log => log.status === 'present').length;
-    const lateDays = logs.logs.filter(log => log.status === 'late').length;
-    const absentDays = totalWorkingDays - presentDays - lateDays;
-
-    // Create detailed logs with all working days
     const detailedLogs = [];
-    const logMap = new Map(logs.logs.map(log => [
-      new Date(log.date).toISOString().split('T')[0],
-      log
-    ]));
 
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      const dateStr = d.toISOString().split('T')[0];
+    dailyStats.forEach(dayStat => {
+      const dateStr = dayStat.date;
+      const dayName = new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' });
 
-      if (dayOfWeek === 0) {
+      // 1. Weekend
+      if (dayStat.isWeekend) {
         detailedLogs.push({
           date: dateStr,
           status: 'weekend',
           check_in_time: null,
           check_out_time: null,
-          day: 'Sunday'
+          day: dayName // e.g. "Sun" or "Fri" depending on setting
         });
-      } else if (holidayDates.has(dateStr)) {
+        return;
+      }
+
+      // 2. Holiday
+      if (dayStat.isHoliday) {
         detailedLogs.push({
           date: dateStr,
           status: 'holiday',
           check_in_time: null,
           check_out_time: null,
-          day: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' })
+          day: dayName
+        });
+        return;
+      }
+
+      // 3. Working Day
+      totalWorkingDays++;
+
+      // Check if we have a log (Present/Late/Absent)
+      // The calculator aggregates counts, but for detailed logs we want the actual log object if possible.
+      // However, calculator result 'dayStat' implies status.
+      // But we lost the 'check_in_time' in the calculator's aggregation?
+      // Wait, AttendanceCalculator.generateMonthlyCalendar returns aggregated stats, NOT the raw log details.
+      // 
+      // FIX: We need to find the raw log for this date to get check_in_time.
+      const originalLog = logs.logs.find(l => new Date(l.date).toISOString().split('T')[0] === dateStr);
+
+      if (originalLog) {
+        detailedLogs.push({
+          ...originalLog,
+          day: dayName
         });
       } else {
-        const log = logMap.get(dateStr);
-        if (log) {
-          detailedLogs.push({
-            ...log,
-            day: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' })
-          });
-        } else {
-          detailedLogs.push({
-            date: dateStr,
-            status: 'absent',
-            check_in_time: null,
-            check_out_time: null,
-            day: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' })
-          });
-        }
+        // No log found on a working day -> Implied Absent
+        detailedLogs.push({
+          date: dateStr,
+          status: 'absent',
+          check_in_time: null,
+          check_out_time: null,
+          day: dayName
+        });
       }
-    }
+    });
 
     const report = {
       student,
@@ -558,11 +557,20 @@ const getClassReport = async (req, res) => {
     // Filter logs for this class
     const classLogs = logs.filter(log => String(log.grade) === String(classId) || String(log.class_id) === String(classId));
 
-    // Process daily stats
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator Class-Wise Logic
+    // -------------------------------------------------------------------------
+    // 1. Get total working days count for the range
+    const calendar = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logs);
+    let totalWorkingDays = 0;
+    calendar.forEach(d => {
+      if (!d.isWeekend && !d.isHoliday) totalWorkingDays++;
+    });
+
+    // 2. Process dailies per class
     const dailyStats = {};
     let totalPresent = 0;
     let totalLate = 0;
-    let totalAbsent = 0;
 
     classLogs.forEach(log => {
       const date = log.date.split('T')[0];
@@ -577,14 +585,20 @@ const getClassReport = async (req, res) => {
       }
     });
 
+    const maxPossibleAttendance = students.total * totalWorkingDays;
+    const avgAttendance = maxPossibleAttendance > 0
+      ? ((totalPresent + totalLate) / maxPossibleAttendance * 100).toFixed(1)
+      : 0;
+
     const report = {
       classInfo: classData.rows[0],
       dateRange: { startDate, endDate },
       totalStudents: students.total,
+      totalWorkingDays, // Added info
       summary: {
         totalPresent,
         totalLate,
-        avgAttendance: students.total > 0 ? ((totalPresent + totalLate) / (students.total * 30) * 100).toFixed(1) : 0 // Approx based on month
+        avgAttendance // Precise calc
       },
       dailyStats
     };
@@ -645,21 +659,38 @@ const getWeeklySummary = async (req, res) => {
         return logTime >= sTime && logTime <= eTime;
       });
 
-      // Calculate stats
-      let totalPresent = 0;
-      const presentSet = new Set();
+      // -------------------------------------------------------------------------
+      // 🛑 REFACTORED: Use AttendanceCalculator to get true Working Days Count
+      // -------------------------------------------------------------------------
+      // We need to know how many working days were in THIS week (excluding Sun/Holidays)
+      // Note: This forces a loop inside a loop, but for 4 weeks it's okay (4 calls).
+      const weeklyCalendar = await AttendanceCalculator.generateMonthlyCalendar(
+        schoolId,
+        weekStart.toISOString().split('T')[0],
+        weekEnd.toISOString().split('T')[0],
+        weekLogs // Pass pre-filtered logs to avoid re-fetching
+      );
 
-      weekLogs.forEach(log => {
-        if (log.status === 'present' || log.status === 'late') {
-          totalPresent++;
-          // SAFE DATE HANDLING: Convert log.date to ISO string before using it
-          const logDateStr = new Date(log.date).toISOString().split('T')[0];
-          presentSet.add(log.student_id + '_' + logDateStr); // Unique check-in per day
+      let workingDaysInWeek = 0;
+      weeklyCalendar.forEach(day => {
+        if (!day.isWeekend && !day.isHoliday) {
+          workingDaysInWeek++;
         }
       });
 
-      // Assume 6 working days
-      const maxPossible = totalStudents * 6;
+      // Calculate stats
+      let totalPresent = 0;
+
+      // We can count distinct present students from the calendar aggregation
+      // dailyStats has 'present + late' count for each day.
+      // Total Present Man-Days = Sum (Daily Present Counts)
+      // This is better than Set approach because a student present on Mon and Tue counts as 2 "Present Man-Days".
+      // The previous logic counted "Attendance Rate" as (Total Present / Max Possible Man-Days).
+
+      totalPresent = weeklyCalendar.reduce((sum, day) => sum + day.present + day.late, 0);
+
+      // Max Possible = Total Students * Working Days
+      const maxPossible = totalStudents * workingDaysInWeek;
       const avgAttendance = maxPossible > 0 ? Math.round((totalPresent / maxPossible) * 100) : 0;
 
       weeks.push({
@@ -670,6 +701,7 @@ const getWeeklySummary = async (req, res) => {
         avgAttendance,
         totalPresent,
         totalAbsent: maxPossible - totalPresent,
+        workingDays: workingDaysInWeek, // Added for clarity
         status: avgAttendance >= 90 ? 'Excellent' : avgAttendance >= 75 ? 'Good' : 'Poor'
       });
     }
@@ -699,6 +731,15 @@ const getLowAttendance = async (req, res) => {
     // Get attendance logs
     const logsList = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
 
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator for Low Attendance
+    // -------------------------------------------------------------------------
+    const calendar = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logsList);
+    let totalWorkingDays = 0;
+    calendar.forEach(d => {
+      if (!d.isWeekend && !d.isHoliday) totalWorkingDays++;
+    });
+
     const studentStats = {};
 
     // Initialize stats
@@ -706,7 +747,7 @@ const getLowAttendance = async (req, res) => {
       studentStats[s.id] = {
         ...s,
         present: 0,
-        total: 30 // Approx working days calculation - simplified
+        total: totalWorkingDays // Accurate!
       };
     });
 
@@ -722,12 +763,12 @@ const getLowAttendance = async (req, res) => {
     // Filter low attendance
     const lowAttendanceStudents = Object.values(studentStats)
       .map(s => {
-        const rate = Math.round((s.present / 24) * 100); // Assuming 24 working days in 30 days
+        const rate = s.total > 0 ? Math.round((s.present / s.total) * 100) : 0;
         return {
           ...s,
           attendanceRate: rate,
-          absentDays: 24 - s.present,
-          totalDays: 24
+          absentDays: s.total - s.present,
+          totalDays: s.total
         };
       })
       .filter(s => s.attendanceRate < threshold)
@@ -773,23 +814,29 @@ const getPerfectAttendance = async (req, res) => {
       if (log.status === 'present' || log.status === 'late') studentStats[log.student_id]++;
     });
 
-    // Calculate working days passed roughly
-    const daysPassed = new Date().getDate();
-    const workingDaysEstimate = Math.max(1, daysPassed - Math.floor(daysPassed / 7)); // Exclude Sundays rough calc
+    // -------------------------------------------------------------------------
+    // 🛑 REFACTORED: Use AttendanceCalculator for Perfect Attendance
+    // -------------------------------------------------------------------------
+    const calendar = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logsList);
+    let totalWorkingDays = 0;
+    calendar.forEach(d => {
+      if (!d.isWeekend && !d.isHoliday) totalWorkingDays++;
+    });
 
     const perfectStudents = [];
     allStudents.students.forEach(student => {
       const presentDays = studentStats[student.id] || 0;
-      // Simple check: if present days is close to working days estimate
-      // Ideally we need exact working days count from holidays table
-      if (presentDays >= workingDaysEstimate - 1) { // Tolerate 1 day discrepancy
+
+      // Strict Check: Must be present for ALL working days
+      if (totalWorkingDays > 0 && presentDays === totalWorkingDays) {
         perfectStudents.push({
           ...student,
           attendanceRate: 100,
           presentDays,
-          totalDays: workingDaysEstimate
+          totalDays: totalWorkingDays
         });
       }
+      // Tolerance of 0 days (Perfect means Perfect)
     });
 
     sendSuccess(res, {

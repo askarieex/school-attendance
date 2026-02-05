@@ -288,9 +288,29 @@ class TeacherService {
 
       Logger.warning('No batch stats in response');
       return {};
-    } catch (e) {
       Logger.error('Error fetching batch stats', e);
       return {};
+    }
+  }
+
+  /// Check day status (Holiday/Weekend/Working)
+  /// GET /api/v1/teacher/day-status?date=YYYY-MM-DD
+  Future<Map<String, dynamic>> checkDayStatus(String date) async {
+    try {
+      final response = await _apiService.get(
+        '/teacher/day-status',
+        queryParams: {'date': date},
+        requiresAuth: true,
+        useCache: true, 
+      );
+
+      if (response['success'] == true && response['data'] != null) {
+        return response['data'] as Map<String, dynamic>;
+      }
+      return {'type': 'WORKING'}; // Default
+    } catch (e) {
+      Logger.error('Error checking day status', e);
+      return {'type': 'WORKING'}; // Fallback
     }
   }
 }

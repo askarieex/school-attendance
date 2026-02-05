@@ -490,12 +490,19 @@ const Reports = () => {
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <div key={d} className="cal-head">{d}</div>)}
           {days.map((day, i) => {
             const date = new Date(day.date);
-            const isWeekend = date.getDay() === 0;
-            const statusClass = day.percentage >= 90 ? 'high' : day.percentage >= 75 ? 'med' : 'low';
+            // 🛑 USE BACKEND FLAGS (Source of Truth)
+            const isWeekend = day.isWeekend;
+            const isHoliday = day.isHoliday;
+
+            // Determine status class
+            let statusClass = day.percentage >= 90 ? 'high' : day.percentage >= 75 ? 'med' : 'low';
+            if (isHoliday) statusClass = 'holiday-bg'; // Ensure you have CSS for this or reuse something appropriate
+
             return (
-              <div key={i} className={`cal-day ${statusClass} ${isWeekend ? 'weekend' : ''}`} title={`${day.date}: ${day.percentage}%`}>
+              <div key={i} className={`cal-day ${statusClass} ${isWeekend ? 'weekend' : ''} ${isHoliday ? 'holiday' : ''}`} title={`${day.date}: ${day.percentage}% ${isHoliday ? '(Holiday)' : ''}`}>
                 <span className="cal-date">{date.getDate()}</span>
-                {!isWeekend && <span className="cal-val">{day.percentage}%</span>}
+                {/* Don't show percentage for Weekends OR Holidays unless there's data? usually 0% */}
+                {!isWeekend && !isHoliday && <span className="cal-val">{day.percentage}%</span>}
               </div>
             );
           })}

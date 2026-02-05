@@ -16,6 +16,7 @@ const { getCurrentDateIST } = require('../utils/timezone');
 const whatsappService = require('../services/whatsappService');
 const { getCurrentAcademicYear } = require('../utils/academicYear');
 const { maskPhone } = require('../utils/logger');
+const AttendanceCalculator = require('../services/attendanceCalculator');
 
 /**
  * Teacher-specific Routes
@@ -485,6 +486,30 @@ router.get('/holidays', async (req, res) => {
 });
 
 /**
+ * GET /api/v1/teacher/day-status
+ * Check if a specific day is a Holiday/Weekend/Working Day
+ * Query params: date (YYYY-MM-DD)
+ */
+router.get('/day-status', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const schoolId = req.tenantSchoolId;
+
+    if (!date) {
+      return sendError(res, 'Date parameter is required', 400);
+    }
+
+    // Use AttendanceCalculator to get status
+    const dayStatus = await AttendanceCalculator.getDayStatus(schoolId, date);
+
+    sendSuccess(res, dayStatus, 'Day status retrieved successfully');
+  } catch (error) {
+    console.error('Get day status error:', error);
+    sendError(res, 'Failed to check day status', 500);
+  }
+});
+
+/**
  * GET /api/v1/teacher/dashboard/batch-attendance-stats
  * Get attendance statistics for multiple sections in a single request
  * Query params:
@@ -856,7 +881,28 @@ router.get(
 
       console.log(`✅ Found ${logsResult.rows.length} attendance logs for section ${sectionId} from ${startDate} to ${endDate}`);
 
-      sendSuccess(res, logsResult.rows, 'Attendance range retrieved successfully');
+      // ✅ ENHANCEMENT: Get Calendar Meta (Holidays/Weekends)
+      // We need to know which days in this range are Holidays or Weekends to show in the UI
+      // We pass empty logs to generateMonthlyCalendar because we just want the Day Status map, not stats
+      const calendarStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, []);
+
+      // Transform to simple map: { '2025-02-01': { type: 'WEEKEND', name: 'Sunday' } }
+      const calendarMeta = {};
+      calendarStats.forEach(day => {
+        if (day.isHoliday) {
+          calendarMeta[day.date] = { type: 'HOLIDAY', name: day.name || 'Holiday' };
+        } else if (day.isWeekend) {
+          calendarMeta[day.date] = { type: 'WEEKEND', name: day.name || 'Weekend' };
+        }
+      });
+
+      // Return both Logs and Calendar Meta
+      // Apps must detect if data is List (old) or Object (new)
+      sendSuccess(res, {
+        logs: logsResult.rows,
+        calendar: calendarMeta
+      }, 'Attendance range retrieved successfully');
+
     } catch (error) {
       console.error('Get attendance range error:', error);
       console.error('Error details:', error.message);

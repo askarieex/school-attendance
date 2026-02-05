@@ -87,28 +87,14 @@ class AutoAbsenceDetectionService {
       const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
       const dayOfWeek = istNow.getDay(); // 0=Sunday, 6=Saturday
 
-      // ALL SCHOOLS HOLIDAY check (Global holidays table)
-      // Note: This is still global because the 'holidays' table doesn't strictly enforce school_id in this context yet,
-      // but ideally this should also be per-school. For now, we assume if it's a holiday in the system, it's for everyone.
-      if (!forceRun) {
-        const holidayCheck = await pool.query(
-          `SELECT COUNT(*) as count FROM holidays
-           WHERE holiday_date = $1 AND is_active = true`,
-          [today]
-        );
-
-        if (parseInt(holidayCheck.rows[0].count) > 0) {
-          console.log('🎉 Today is a global holiday, skipping auto-absence check');
-          return;
-        }
-      }
+      // 🛑 REMOVED GLOBAL HOLIDAY CHECK
+      // Reason: It was blocking ALL schools if ANY school had a holiday.
+      // Moved to inside the PER-SCHOOL loop.
 
       // Get current hour in Indian Time
-      const currentHour = parseInt(new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        hour: 'numeric',
-        hour12: false
-      }));
+      // 🛑 FIXED: Use robust IST hour check (ignoring server locale)
+      const { getCurrentHourIST } = require('../utils/timezone');
+      const currentHour = getCurrentHourIST();
 
       console.log(`   Current Hour (IST): ${currentHour}:00`);
       console.log(`   Day of Week: ${dayOfWeek} (0=Sun, 6=Sat)`);
@@ -197,6 +183,21 @@ class AutoAbsenceDetectionService {
         console.log(`\n🏫 Processing School: ${school.school_name} (ID: ${school.school_id})`);
         console.log(`   Grace Period: ${school.grace_period_hours} hours`);
         console.log(`   Check Time: ${school.absence_check_time}`);
+
+        // 🛑 NEW: Per-School Holiday Check
+        if (!forceRun) {
+          const holidayCheck = await pool.query(
+            `SELECT holiday_name FROM holidays
+             WHERE school_id = $1 AND holiday_date = $2 AND is_active = true
+             LIMIT 1`,
+            [school.school_id, today]
+          );
+
+          if (holidayCheck.rows.length > 0) {
+            console.log(`   🎉 Holiday detected for ${school.school_name}: ${holidayCheck.rows[0].holiday_name} - SKIPPING`);
+            continue; // Skip this school
+          }
+        }
 
         // ✅ PERFORMANCE FIX: Process students in batches to avoid memory issues with large schools
         const BATCH_SIZE = 500;

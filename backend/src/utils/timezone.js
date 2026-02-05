@@ -38,6 +38,16 @@ const getCurrentTimeIST = () => {
 };
 
 /**
+ * Get current hour in IST (0-23)
+ * @returns {number} Current hour in IST
+ */
+const getCurrentHourIST = () => {
+  const now = new Date();
+  const istDate = new Date(now.getTime() + (IST_OFFSET_MINUTES * 60 * 1000));
+  return istDate.getUTCHours();
+};
+
+/**
  * Get current datetime in IST
  * @returns {Date} Date object representing current time in IST
  */
@@ -179,6 +189,7 @@ module.exports = {
   IST_OFFSET_MINUTES,
   getCurrentDateIST,
   getCurrentTimeIST,
+  getCurrentHourIST,
   getCurrentDateTimeIST,
   utcToISTDate,
   utcToISTTime,

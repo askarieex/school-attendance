@@ -21,6 +21,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
   List<Map<String, dynamic>> _students = [];
   bool _isLoading = true;
   bool _isSunday = false;
+  String? _nonWorkingDayReason;
 
   int _presentCount = 0;
   int _lateCount = 0;
@@ -37,14 +38,24 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
   Future<void> _loadStudentsAndAttendance({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     try {
-      // ✅ CHECK: Don't load attendance on Sunday
-      final today = TimeUtils.nowIST();
-      if (today.weekday == DateTime.sunday) {
+      // ✅ CHECK: Use Server to check if Working Day
+      final today = TimeUtils.todayIST();
+      
+      // We check status first
+      // Note: If forceRefresh is true, we should probably re-check status too
+      final dayStatus = await _teacherService.checkDayStatus(today);
+      
+      if (dayStatus['type'] != 'WORKING') {
         setState(() {
           _isLoading = false;
-          _isSunday = true;
+          _isSunday = true; // reusing variable for "NonWorkingDay"
+          _nonWorkingDayReason = dayStatus['name'] ?? 'Holiday'; // Add this field to state
         });
         return;
+      } else {
+         setState(() {
+           _isSunday = false;
+         });
       }
 
       final sectionId = widget.classData['section_id'];
@@ -723,9 +734,10 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
             const SizedBox(height: 32),
 
             // Title
-            const Text(
-              'It\'s Sunday!',
-              style: TextStyle(
+            Text(
+              _nonWorkingDayReason ?? 'No Class Today',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
@@ -736,7 +748,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
 
             // Subtitle
             const Text(
-              'No school today',
+              'Enjoy your break!',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
@@ -765,7 +777,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Attendance cannot be marked on Sundays',
+                    'Attendance is disabled for today',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
@@ -776,7 +788,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Please come back on Monday to mark attendance',
+                    'Please come back on the next working day.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
