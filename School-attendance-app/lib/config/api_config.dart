@@ -3,8 +3,8 @@
 
 class ApiConfig {
   // Base URL - Change this to your backend URL
-  // static const String baseUrl = 'http://localhost:3001/api/v1'; // For local development
-  static const String baseUrl = 'https://adtenz.site/api/v1'; // For production
+  // static const String baseUrl = 'http://192.168.1.2:3003/api/v1'; // Local IP
+  static const String baseUrl = 'https://adtenz.site/api/v1'; // For production (Connecting to VPS)
   
   // Timeout settings - Lower for faster retry on mobile (better UX)
   static const Duration connectTimeout = Duration(seconds: 10);  // ✅ Reduced from 60s

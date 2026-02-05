@@ -262,10 +262,8 @@ class TeacherService {
       if (sectionIds.isEmpty) return {};
 
       // Get today's date if not provided
-      if (date == null) {
-        final today = DateTime.now();
-        date = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      }
+      // ✅ FIX: Use IST date, not device local time
+      date ??= TimeUtils.todayIST();
 
       Logger.network('Fetching batch attendance stats for sections: $sectionIds on $date${forceRefresh ? " (FORCE REFRESH)" : ""}');
 

@@ -300,16 +300,20 @@ class WhatsAppService {
 
       // 🔒 Deduplication check
       // ✅ FIX: Use provided date (IST) or current IST date if missing. Avoid UTC mismatch.
-      const { getCurrentDateIST } = require('../utils/timezone');
+      const { getCurrentDateIST, getStartOfDayUTC, getEndOfDayUTC } = require('../utils/timezone');
       const { query } = require('../config/database'); // ✅ FIX: Import query
       const today = date || getCurrentDateIST();
 
       const normalizedPhone = this.normalizePhoneForDedup(phone); // ✅ FIX: Define normalizedPhone
 
+      // ✅ FIX: Use UTC range for comparison (sent_at is stored in UTC, today is IST)
+      const startUTC = getStartOfDayUTC(today);
+      const endUTC = getEndOfDayUTC(today);
+
       const duplicateCheck = await query(
         `SELECT id, message_id FROM whatsapp_logs
-         WHERE phone = $1 AND student_id = $2 AND status = $3 AND DATE(sent_at) = $4 LIMIT 1`,
-        [normalizedPhone, studentId, status, today]
+         WHERE phone = $1 AND student_id = $2 AND status = $3 AND sent_at >= $4 AND sent_at <= $5 LIMIT 1`,
+        [normalizedPhone, studentId, status, startUTC, endUTC]
       );
 
       if (duplicateCheck.rows.length > 0) {

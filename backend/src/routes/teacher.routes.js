@@ -280,60 +280,73 @@ router.post(
 
         if (!isToday) {
           console.log(`⏭️ [TEACHER] Skipping WhatsApp alert: Attendance marked for ${date} (not today: ${todayIST})`);
-        } else if (finalStatus === 'late' || finalStatus === 'absent' || finalStatus === 'leave') {
-          // Only send WhatsApp for late, absent, or leave status
-          // Get student details for phone numbers
-          const studentResult = await query(
-            'SELECT full_name, guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
-            [studentId]
+        } else {
+          // ✅ SMART SETTINGS: Load school notification preferences
+          const SchoolSettings = require('../models/SchoolSettings');
+          const schoolSettings = await SchoolSettings.findBySchool(schoolId);
+
+          // ✅ Check if this status should trigger a notification based on settings
+          const shouldNotify = (
+            (finalStatus === 'present' && schoolSettings?.send_on_present === true) ||
+            (finalStatus === 'late' && schoolSettings?.send_on_late !== false) ||
+            (finalStatus === 'absent' && schoolSettings?.send_on_absent !== false) ||
+            (finalStatus === 'leave' && schoolSettings?.send_on_leave !== false)
           );
 
-          if (studentResult.rows.length > 0) {
-            const studentData = studentResult.rows[0];
+          if (!shouldNotify) {
+            console.log(`ℹ️ [TEACHER] Notification skipped for ${studentId} (${finalStatus}) - disabled in school settings`);
+          } else {
+            // Get student details for phone numbers
+            const studentResult = await query(
+              'SELECT full_name, guardian_phone, parent_phone, mother_phone FROM students WHERE id = $1',
+              [studentId]
+            );
 
-            // Try multiple phone fields in order of priority
-            let phoneToUse = null;
-            if (studentData.guardian_phone && studentData.guardian_phone.trim() !== '') {
-              phoneToUse = studentData.guardian_phone;
-            } else if (studentData.parent_phone && studentData.parent_phone.trim() !== '') {
-              phoneToUse = studentData.parent_phone;
-            } else if (studentData.mother_phone && studentData.mother_phone.trim() !== '') {
-              phoneToUse = studentData.mother_phone;
-            }
+            if (studentResult.rows.length > 0) {
+              const studentData = studentResult.rows[0];
 
-            if (phoneToUse) {
-              // Get school name
-              const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
-              const schoolName = schoolResult.rows[0]?.name || 'School';
+              // Try multiple phone fields in order of priority
+              let phoneToUse = null;
+              if (studentData.guardian_phone && studentData.guardian_phone.trim() !== '') {
+                phoneToUse = studentData.guardian_phone;
+              } else if (studentData.parent_phone && studentData.parent_phone.trim() !== '') {
+                phoneToUse = studentData.parent_phone;
+              } else if (studentData.mother_phone && studentData.mother_phone.trim() !== '') {
+                phoneToUse = studentData.mother_phone;
+              }
 
-              console.log(`📱 [TEACHER] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${studentData.full_name} (${finalStatus})`);
+              if (phoneToUse) {
+                // Get school name
+                const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+                const schoolName = schoolResult.rows[0]?.name || 'School';
 
-              const whatsappResult = await whatsappService.sendAttendanceAlert({
-                parentPhone: phoneToUse,
-                studentName: studentData.full_name,
-                studentId: studentId,
-                schoolId: schoolId,
-                status: finalStatus,
-                checkInTime: timeToUse,
-                schoolName: schoolName,
-                date: date
-              });
+                console.log(`📱 [TEACHER] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${studentData.full_name} (${finalStatus})`);
 
-              if (whatsappResult.success) {
-                if (whatsappResult.skipped) {
-                  console.log(`⏭️ [TEACHER] WhatsApp message skipped: ${whatsappResult.reason}`);
+                const whatsappResult = await whatsappService.sendAttendanceAlert({
+                  parentPhone: phoneToUse,
+                  studentName: studentData.full_name,
+                  studentId: studentId,
+                  schoolId: schoolId,
+                  status: finalStatus,
+                  checkInTime: timeToUse,
+                  schoolName: schoolName,
+                  date: date
+                });
+
+                if (whatsappResult.success) {
+                  if (whatsappResult.skipped) {
+                    console.log(`⏭️ [TEACHER] WhatsApp message skipped: ${whatsappResult.reason}`);
+                  } else {
+                    console.log(`✅ [TEACHER] WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
+                  }
                 } else {
-                  console.log(`✅ [TEACHER] WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
+                  console.error(`❌ [TEACHER] WhatsApp alert failed: ${whatsappResult.error}`);
                 }
               } else {
-                console.error(`❌ [TEACHER] WhatsApp alert failed: ${whatsappResult.error}`);
+                console.log(`⚠️ [TEACHER] No phone number found for student ${studentId}, skipping WhatsApp alert`);
               }
-            } else {
-              console.log(`⚠️ [TEACHER] No phone number found for student ${studentId}, skipping WhatsApp alert`);
             }
           }
-        } else {
-          console.log(`ℹ️ [TEACHER] Student marked as '${finalStatus}', no WhatsApp alert needed`);
         }
       } catch (whatsappError) {
         console.error('[TEACHER] WhatsApp alert error (non-fatal):', whatsappError);

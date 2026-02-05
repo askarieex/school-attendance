@@ -391,8 +391,8 @@ const startServer = async () => {
       });
     });
 
-    // Start server
-    const serverInstance = server.listen(PORT, () => {
+    // Start server - Bind to 0.0.0.0 to allow external access (mobile devices)
+    const serverInstance = server.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 Server is running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 API Base URL: http://localhost:${PORT}/api/${API_VERSION}`);

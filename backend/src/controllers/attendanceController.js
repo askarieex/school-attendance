@@ -31,7 +31,8 @@ const logAttendance = async (req, res) => {
     }
 
     // Check if student already checked in today
-    const today = new Date().toISOString().split('T')[0];
+    // ✅ FIX: Use IST date, not UTC (server may run in UTC timezone)
+    const today = getCurrentDateIST();
     const existingLog = await AttendanceLog.existsToday(student.id, today);
 
     if (existingLog) {
@@ -103,46 +104,56 @@ const logAttendance = async (req, res) => {
 
       if (!isToday) {
         console.log(`⚠️ RFID attendance logged for non-today date: ${today} (today is ${todayIST})`);
-      } else if (status === 'present' || status === 'late') {
-        // ✅ FIX: Send WhatsApp for BOTH present AND late (not just late)
-        // RFID devices mark present or late, parents want to know when child arrives
-        // Try multiple phone fields in order of priority
-        let phoneToUse = null;
-        if (student.guardian_phone && student.guardian_phone.trim() !== '') {
-          phoneToUse = student.guardian_phone;
-        } else if (student.parent_phone && student.parent_phone.trim() !== '') {
-          phoneToUse = student.parent_phone;
-        } else if (student.mother_phone && student.mother_phone.trim() !== '') {
-          phoneToUse = student.mother_phone;
-        }
-
-        if (phoneToUse) {
-          // Get school name for WhatsApp message
-          const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
-          const schoolName = schoolResult.rows[0]?.name || 'School';
-
-          console.log(`📱 [RFID] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${student.full_name} (${status})`);
-
-          const checkInTimeFormatted = checkInTime.toTimeString().split(' ')[0]; // HH:MM:SS
-
-          const whatsappResult = await whatsappService.sendAttendanceAlert({
-            parentPhone: phoneToUse,
-            studentName: student.full_name,
-            status: status,
-            checkInTime: checkInTimeFormatted,
-            schoolName: schoolName
-          });
-
-          if (whatsappResult.success) {
-            console.log(`✅ [RFID] WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
-          } else {
-            console.error(`❌ [RFID] WhatsApp alert failed: ${whatsappResult.error}`);
-          }
-        } else {
-          console.log(`⚠️ [RFID] No phone number found for ${student.full_name}, skipping WhatsApp alert`);
-        }
       } else {
-        console.log(`ℹ️ [RFID] Student ${student.full_name} marked as '${status}', no WhatsApp alert needed`);
+        // ✅ SMART SETTINGS: Load school notification preferences
+        const SchoolSettings = require('../models/SchoolSettings');
+        const schoolSettings = await SchoolSettings.findBySchool(schoolId);
+
+        // ✅ Check if this status should trigger a notification based on settings
+        const shouldNotify = (
+          (status === 'present' && schoolSettings?.send_on_present === true) ||
+          (status === 'late' && schoolSettings?.send_on_late !== false)  // Default true
+        );
+
+        if (!shouldNotify) {
+          console.log(`ℹ️ [RFID] Notification skipped for ${student.full_name} (${status}) - disabled in school settings`);
+        } else {
+          // Try multiple phone fields in order of priority
+          let phoneToUse = null;
+          if (student.guardian_phone && student.guardian_phone.trim() !== '') {
+            phoneToUse = student.guardian_phone;
+          } else if (student.parent_phone && student.parent_phone.trim() !== '') {
+            phoneToUse = student.parent_phone;
+          } else if (student.mother_phone && student.mother_phone.trim() !== '') {
+            phoneToUse = student.mother_phone;
+          }
+
+          if (phoneToUse) {
+            // Get school name for WhatsApp message
+            const schoolResult = await query('SELECT name FROM schools WHERE id = $1', [schoolId]);
+            const schoolName = schoolResult.rows[0]?.name || 'School';
+
+            console.log(`📱 [RFID] Sending WhatsApp alert to ${maskPhone(phoneToUse)} for ${student.full_name} (${status})`);
+
+            const checkInTimeFormatted = checkInTime.toTimeString().split(' ')[0]; // HH:MM:SS
+
+            const whatsappResult = await whatsappService.sendAttendanceAlert({
+              parentPhone: phoneToUse,
+              studentName: student.full_name,
+              status: status,
+              checkInTime: checkInTimeFormatted,
+              schoolName: schoolName
+            });
+
+            if (whatsappResult.success) {
+              console.log(`✅ [RFID] WhatsApp alert sent successfully: ${whatsappResult.messageId}`);
+            } else {
+              console.error(`❌ [RFID] WhatsApp alert failed: ${whatsappResult.error}`);
+            }
+          } else {
+            console.log(`⚠️ [RFID] No phone number found for ${student.full_name}, skipping WhatsApp alert`);
+          }
+        }
       }
     } catch (whatsappError) {
       console.error('[RFID] WhatsApp alert error (non-fatal):', whatsappError);

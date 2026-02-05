@@ -628,7 +628,8 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
   }) async {
     final studentName = student['full_name'] ?? 'Student';
     final sectionId = widget.classData['section_id'];
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    // ✅ FIX: Use IST date, not device local time (prevents timezone mismatch)
+    final today = TimeUtils.todayIST();
     final checkInTime = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
 
     // Update UI optimistically

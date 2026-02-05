@@ -29,6 +29,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   bool _isLoading = true;
   int _selectedIndex = 0; // 0=Dashboard, 1=Classes, 2=Calendar, 3=Students
   Map<int, Map<String, int>> _attendanceStats = {}; // sectionId -> {present, late, absent}
+  
+  // Student List State
+  bool _isLoadingStudents = false;
+  List<Map<String, dynamic>> _allStudents = [];
+  List<Map<String, dynamic>> _filteredStudents = [];
+  TextEditingController _searchController = TextEditingController();
 
   // Dashboard stats
   Map<String, dynamic> _dashboardStats = {
@@ -48,7 +54,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     super.initState();
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _teacherService = TeacherService(authProvider.apiService);
+    _teacherService = TeacherService(authProvider.apiService);
     _loadClasses();
+    _searchController.addListener(_filterStudents);
 
     // ✅ NEW: Listen for session expiration and redirect to login
     authProvider.addListener(_checkSessionExpiration);
@@ -58,6 +66,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   void dispose() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     authProvider.removeListener(_checkSessionExpiration);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -165,6 +174,69 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
 
     _attendanceStats = stats;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // STUDENT FETCHING LOGIC
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _loadAllStudents() async {
+    if (_classes.isEmpty) return;
+
+    setState(() => _isLoadingStudents = true);
+
+    try {
+      List<Map<String, dynamic>> allStudents = [];
+
+      // Fetch students for EACH assigned section
+      for (var cls in _classes) {
+        final sectionId = cls['section_id'];
+        if (sectionId != null) {
+          final students = await _teacherService.getStudentsInSection(sectionId);
+          
+          // Add class info to each student for grouping/display
+          for (var student in students) {
+            student['class_name'] = cls['class_name'];
+            student['section_name'] = cls['section_name'];
+            student['section_id'] = sectionId;
+          }
+          allStudents.addAll(students);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _allStudents = allStudents;
+          _filteredStudents = allStudents;
+          _isLoadingStudents = false;
+        });
+        _filterStudents(); // Apply any existing search
+      }
+    } catch (e) {
+      Logger.error('Error loading all students', e);
+      if (mounted) {
+        setState(() => _isLoadingStudents = false);
+      }
+    }
+  }
+
+  void _filterStudents() {
+    final query = _searchController.text.toLowerCase();
+    if (query.isEmpty) {
+      if (mounted) setState(() => _filteredStudents = _allStudents);
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _filteredStudents = _allStudents.where((student) {
+          final name = (student['full_name'] ?? '').toString().toLowerCase();
+          final roll = (student['roll_number'] ?? '').toString().toLowerCase();
+          final father = (student['father_name'] ?? '').toString().toLowerCase();
+          return name.contains(query) || roll.contains(query) || father.contains(query);
+        }).toList();
+      });
+    }
   }
 
   @override
@@ -740,6 +812,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       case 2:
         return _buildCalendarView();
       case 3:
+        if (_allStudents.isEmpty && !_isLoadingStudents) _loadAllStudents(); // Lazy load
         return _buildStudentsView();
       case 4:
         return _buildReportsView();
@@ -1860,7 +1933,189 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildStudentsView() {
-    return const Center(child: Text('All Students View'));
+    return Column(
+      children: [
+        // 🔍 Search Bar
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                offset: const Offset(0, 4),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search students...',
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.grey),
+                      onPressed: () {
+                        _searchController.clear();
+                        FocusScope.of(context).unfocus();
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: const Color(0xFFF3F4F6),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+
+        // 📋 Student List
+        Expanded(
+          child: _isLoadingStudents
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5)))
+              : _filteredStudents.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.person_search_rounded, size: 64, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          Text(
+                            _classes.isEmpty 
+                                ? 'No classes assigned to you yet.' 
+                                : _searchController.text.isNotEmpty 
+                                    ? 'No students found matching "${_searchController.text}"'
+                                    : 'No students found.',
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _filteredStudents.length,
+                      itemBuilder: (context, index) {
+                        final student = _filteredStudents[index];
+                        return _buildStudentCard(student);
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStudentCard(Map<String, dynamic> student) {
+    // Generate distinct color from first letter of name
+    final String initial = (student['full_name'] ?? '?').toString().substring(0, 1).toUpperCase();
+    final List<Color> avatarColors = [
+      const Color(0xFFEF4444), const Color(0xFFF59E0B), const Color(0xFF10B981),
+      const Color(0xFF3B82F6), const Color(0xFF6366F1), const Color(0xFF8B5CF6),
+      const Color(0xFFEC4899),
+    ];
+    final colorIndex = initial.codeUnitAt(0) % avatarColors.length;
+    final avatarColor = avatarColors[colorIndex];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: avatarColor.withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: avatarColor.withOpacity(0.2), width: 1.5),
+          ),
+          child: Center(
+            child: Text(
+              initial,
+              style: TextStyle(
+                color: avatarColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+          ),
+        ),
+        title: Text(
+          student['full_name'] ?? 'Unknown',
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: Color(0xFF1F2937),
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _buildTag(
+                  text: 'Roll: ${student['roll_number'] ?? '-'}', 
+                  color: Colors.grey.withOpacity(0.1), 
+                  textColor: Colors.grey.shade700
+                ),
+                const SizedBox(width: 8),
+                _buildTag(
+                  text: '${student['class_name']}-${student['section_name']}', 
+                  color: const Color(0xFFEEF2FF), 
+                  textColor: const Color(0xFF4F46E5)
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF9CA3AF)),
+        ),
+        onTap: () {
+          // Open Student Profile (to be implemented or reused if exists)
+          // For now, could show a bottom sheet or simple alert
+        },
+      ),
+    );
+  }
+
+  Widget _buildTag({required String text, required Color color, required Color textColor}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
+      ),
+    );
   }
 
   Widget _buildReportsView() {
