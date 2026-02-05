@@ -243,7 +243,7 @@ class AttendanceLog {
         al.id, al.student_id, 
         TO_CHAR(al.date, 'YYYY-MM-DD') as date,
         al.check_in_time,
-        al.check_out_time,
+        NULL as check_out_time,
         al.status,
         al.created_at as timestamp,
         al.notes,
