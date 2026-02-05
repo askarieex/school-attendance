@@ -262,18 +262,31 @@ const AttendanceDaily = () => {
         });
 
         if (logsResponse.success && logsResponse.data) {
-          logsResponse.data.forEach(log => {
+          // Handle both old format (array) and new format ({ logs, calendar })
+          const logs = Array.isArray(logsResponse.data)
+            ? logsResponse.data
+            : (logsResponse.data.logs || []);
+
+          logs.forEach(log => {
             if (attendanceMapData[log.student_id]) {
               // Extract day from date (YYYY-MM-DD format)
-              const logDate = new Date(log.date);
-              const day = logDate.getDate();
+              const dateStr = log.date || log.check_in_time || log.created_at;
+              let day;
+              if (dateStr && dateStr.includes('T')) {
+                day = new Date(dateStr).getDate();
+              } else if (dateStr) {
+                const parts = dateStr.split(/[-/]/);
+                day = parts.length >= 3 ? parseInt(parts[2], 10) : new Date(dateStr).getDate();
+              }
 
-              attendanceMapData[log.student_id][day] = {
-                status: log.status || 'present',
-                checkIn: log.check_in_time || log.timestamp,
-                checkOut: log.check_out_time,
-                leaveReason: log.leave_reason
-              };
+              if (day) {
+                attendanceMapData[log.student_id][day] = {
+                  status: log.status || 'present',
+                  checkIn: log.check_in_time || log.timestamp,
+                  checkOut: log.check_out_time,
+                  leaveReason: log.leave_reason
+                };
+              }
             }
           });
         }
