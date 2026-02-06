@@ -40,10 +40,10 @@ class AutoAbsenceDetectionService {
       return;
     }
 
-    // Run every HOUR at minute 0 (Monday-Saturday)
+    // Run every MINUTE (Monday-Saturday) to support any configured time
     // Cron format: minute hour day month dayOfWeek
-    // '0 * * * 1-6' = Every hour on the hour, Monday to Saturday
-    this.job = cron.schedule('0 * * * 1-6', async () => {
+    // '* * * * 1-6' = Every minute, Monday to Saturday
+    this.job = cron.schedule('* * * * 1-6', async () => {
       if (this.isRunning) {
         console.log('⏭️  Auto-absence check already running, skipping...');
         return;
@@ -63,7 +63,7 @@ class AutoAbsenceDetectionService {
     });
 
     console.log('✅ Auto-absence detection service started');
-    console.log('   Schedule: Hourly (Monday-Saturday)');
+    console.log('   Schedule: Every minute (Monday-Saturday)');
     console.log('   Timezone: Asia/Kolkata');
   }
 
@@ -91,12 +91,13 @@ class AutoAbsenceDetectionService {
       // Reason: It was blocking ALL schools if ANY school had a holiday.
       // Moved to inside the PER-SCHOOL loop.
 
-      // Get current hour in Indian Time
-      // 🛑 FIXED: Use robust IST hour check (ignoring server locale)
-      const { getCurrentHourIST } = require('../utils/timezone');
+      // Get current hour AND minute in Indian Time
+      // 🛑 FIXED: Use robust IST time check (ignoring server locale)
+      const { getCurrentHourIST, getCurrentMinuteIST } = require('../utils/timezone');
       const currentHour = getCurrentHourIST();
+      const currentMinute = getCurrentMinuteIST();
 
-      console.log(`   Current Hour (IST): ${currentHour}:00`);
+      console.log(`   Current Time (IST): ${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
       console.log(`   Day of Week: ${dayOfWeek} (0=Sun, 6=Sat)`);
 
       let totalStudents = 0;
@@ -153,21 +154,17 @@ class AutoAbsenceDetectionService {
           return false;
         }
 
-        // 3. CHECK TIME MATCH
-        let checkHour;
-        const timeStr = school.absence_check_time.toUpperCase();
+        // 3. CHECK TIME MATCH (hour AND minute must match)
+        const timeStr = String(school.absence_check_time); // e.g., "12:30:00" or "11:00:00"
+        const timeParts = timeStr.split(':');
+        const checkHour = parseInt(timeParts[0], 10);
+        const checkMinute = parseInt(timeParts[1] || '0', 10);
 
-        if (timeStr.includes('PM') && !timeStr.startsWith('12')) {
-          checkHour = parseInt(timeStr.split(':')[0]) + 12;
-        } else if (timeStr.includes('AM') && timeStr.startsWith('12')) {
-          checkHour = 0; // 12 AM is 00:00
-        } else {
-          checkHour = parseInt(timeStr.split(':')[0]);
-        }
-
-        if (checkHour === currentHour) {
+        if (checkHour === currentHour && checkMinute === currentMinute) {
+          console.log(`   ✅ Time match for ${school.school_name}: ${checkHour}:${checkMinute.toString().padStart(2, '0')}`);
           return true;
         } else {
+          // Silent skip for non-matching times (too noisy otherwise)
           return false;
         }
       });
