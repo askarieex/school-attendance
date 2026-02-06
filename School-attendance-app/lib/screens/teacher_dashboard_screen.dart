@@ -245,128 +245,14 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     return Scaffold(
-      backgroundColor: Colors.white, // Pure white background
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Simple Top Bar
-            _buildSimpleTopBar(context),
-            // Body Content
-            Expanded(
-              child: _buildBody(),
-            ),
-          ],
-        ),
-      ),
+      backgroundColor: Colors.white,
+      body: _buildBody(),
       drawer: _buildDrawer(context, authProvider),
       bottomNavigationBar: _buildBottomNavigation(),
     );
   }
 
-  Widget _buildSimpleTopBar(BuildContext context) {
-    // ✅ CRITICAL FIX: Use listen: false to prevent rebuilds
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final schoolName = authProvider.currentUser?.schoolName ?? 'School';
-    final schoolLogo = authProvider.currentUser?.schoolLogo;  // ✅ NEW: Get school logo
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: Color(0xFFE0E0E0),
-            width: 1,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          // Menu Icon - Simple black
-          Builder(
-            builder: (context) => GestureDetector(
-              onTap: () => Scaffold.of(context).openDrawer(),
-              child: const Icon(Icons.menu, color: Colors.black, size: 24),
-            ),
-          ),
-          const SizedBox(width: 16),
-          // ✅ NEW: School Logo + Name
-          Expanded(
-            child: Row(
-              children: [
-                // School Logo (if available)
-                if (schoolLogo != null && schoolLogo.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(right: 10),
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.grey.shade200,
-                      child: ClipOval(
-                        child: Image.network(
-                          schoolLogo,
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            // Fallback to icon if image fails to load
-                            return Icon(
-                              Icons.school_rounded,
-                              size: 18,
-                              color: Colors.grey.shade600,
-                            );
-                          },
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const Center(
-                              child: SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                // School Name
-                Expanded(
-                  child: Text(
-                    schoolName,
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Academic Year - Simple text badge
-          if (authProvider.currentUser?.currentAcademicYear != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2B9AFF), // Brand blue
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                authProvider.currentUser!.currentAcademicYear!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   Widget _buildDashboardHeader(BuildContext context, AuthProvider authProvider) {
     final now = TimeUtils.nowIST();
@@ -886,9 +772,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final formattedDate = DateFormat('EEEE, MMMM d').format(now);
     final formattedTime = DateFormat('h:mm a').format(now);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
-      body: RefreshIndicator(
+    return Container(
+      color: const Color(0xFFF8F9FE),
+      child: RefreshIndicator(
         onRefresh: () => _loadClasses(forceRefresh: true),
         color: const Color(0xFF7C3AED),
         child: SingleChildScrollView(
@@ -897,12 +783,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ══════════════════════════════════════════════════════════════
-              // ✨ NEW: CLEAN HEADER WITH DATE
+              // ✨ MODERN GRADIENT HEADER
               // ══════════════════════════════════════════════════════════════
               Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)], // Purple to Indigo
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -914,102 +800,107 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // ✨ LARGE SCHOOL LOGO
-                        _buildSchoolLogo(authProvider),
-                        const SizedBox(height: 16),
-                        
-                        // School Name
-                        Text(
-                          authProvider.currentUser?.schoolName ?? 'School',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        
-                        // Welcome Message
-                        Text(
-                          '👋 Welcome back, $userName',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white.withOpacity(0.9),
-                            letterSpacing: 0.2,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                        // ✨ NEW: Date & Time Card
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
+                        // ✨ TOP ROW: Menu Button & Profile/Notification
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // 🍔 Glassmorphism Menu Button
+                            GestureDetector(
+                              onTap: () => Scaffold.of(context).openDrawer(),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white.withOpacity(0.3)),
                                 ),
-                                child: const Icon(
-                                  Icons.calendar_today_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
+                                child: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      formattedDate,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      formattedTime,
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.85),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            ),
+                            // 🔔 Notification / Date
+                             Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Colors.white.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: const Text(
-                                  'Today',
+                                child: Text(
+                                  '2026-2027', // Academic Year
                                   style: TextStyle(
-                                    color: Color(0xFF8B5CF6),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // ✨ CENTERED LOGO & SCHOOL INFO
+                        Column(
+                          children: [
+                            // 🏫 Large School Logo
+                            Hero(
+                              tag: 'school_logo',
+                              child: _buildSchoolLogo(authProvider),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // School Name (Responsive Text)
+                            Text(
+                              authProvider.currentUser?.schoolName?.toUpperCase() ?? 'SCHOOL DASHBOARD',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                                height: 1.2,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            
+                            // Welcome Message
+                            Text(
+                              '👋 Welcome back, ${userName.split(' ')[0]}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.white.withOpacity(0.9),
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // 📅 Date Card (Glassmorphism)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withOpacity(0.2)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min, // Compact width
+                            children: [
+                              const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                formattedDate, // e.g. "Monday, Feb 5"
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -1022,150 +913,142 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               ),
 
               // ══════════════════════════════════════════════════════════════
-              // ✨ REDESIGNED: ATTENDANCE SUMMARY CARD
+              // 📊 MAIN ATTENDANCE CARD
               // ══════════════════════════════════════════════════════════════
               Transform.translate(
                 offset: const Offset(0, -20),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.12),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
-                      Text(
-                        "Today's Attendance",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      // Total Students Badge
+                      // White Card
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.08),
+                              blurRadius: 24,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          '$totalStudents students total',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Column(
+                          children: [
+                            Text(
+                              "TODAY'S ATTENDANCE",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // 📈 Percentage & Students Count
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${attendancePercent.toInt()}%',
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF1F2937),
+                                    height: 1,
+                                    letterSpacing: -2,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    'Present',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '$totalStudents Total Students',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade400,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 24),
+                            
+                            // 📊 Metrics Grid (2x2)
+                            Row(
+                              children: [
+                                // Present
+                                Expanded(
+                                  child: _buildMetricItem(
+                                    count: presentOnly.toString(),
+                                    label: 'Present',
+                                    color: const Color(0xFF10B981),
+                                    bgColor: const Color(0xFFECFDF5),
+                                    icon: Icons.check_circle_rounded,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Late
+                                Expanded(
+                                  child: _buildMetricItem(
+                                    count: lateOnly.toString(),
+                                    label: 'Late',
+                                    color: const Color(0xFFF59E0B),
+                                    bgColor: const Color(0xFFFFFBEB),
+                                    icon: Icons.schedule_rounded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                // Absent
+                                Expanded(
+                                  child: _buildMetricItem(
+                                    count: absentCount.toString(),
+                                    label: 'Absent',
+                                    color: const Color(0xFFEF4444),
+                                    bgColor: const Color(0xFFFEF2F2),
+                                    icon: Icons.cancel_rounded,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Leave
+                                Expanded(
+                                  child: _buildMetricItem(
+                                    count: leaveCount.toString(),
+                                    label: 'On Leave',
+                                    color: const Color(0xFF6366F1),
+                                    bgColor: const Color(0xFFEEF2FF),
+                                    icon: Icons.flight_takeoff_rounded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
-                        ).createShader(bounds),
-                        child: Text(
-                          '${attendancePercent.toInt()}%',
-                          style: const TextStyle(
-                            fontSize: 56,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1,
-                            letterSpacing: -2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      // Progress Bar
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: attendancePercent / 100,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
-                          minHeight: 8,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      // ✨ NEW: 5 Metrics in Grid (2+3 layout)
-                      Column(
-                        children: [
-                          // Row 1: Attended + Absent
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildMetricCard(
-                                  '$attendedCount',
-                                  'Attended',
-                                  'Present + Late',
-                                  Icons.check_circle_rounded,
-                                  const Color(0xFF10B981),
-                                  const Color(0xFFD1FAE5),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildMetricCard(
-                                  '$absentCount',
-                                  'Absent',
-                                  'Didn\'t attend',
-                                  Icons.cancel_rounded,
-                                  const Color(0xFFEF4444),
-                                  const Color(0xFFFEE2E2),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Row 2: Present + Late + Leave
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildSmallMetricCard(
-                                  '$presentOnly',
-                                  'Present',
-                                  Icons.sentiment_satisfied_alt_rounded,
-                                  const Color(0xFF059669),
-                                  const Color(0xFFA7F3D0),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildSmallMetricCard(
-                                  '$lateOnly',
-                                  'Late',
-                                  Icons.schedule_rounded,
-                                  const Color(0xFFF59E0B),
-                                  const Color(0xFFFEF3C7),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildSmallMetricCard(
-                                  '$leaveCount',
-                                  'Leave',
-                                  Icons.event_busy_rounded,
-                                  const Color(0xFF8B5CF6),
-                                  const Color(0xFFEDE9FE),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ),
               ),
+
 
               // ══════════════════════════════════════════════════════════════
               // QUICK ACTIONS
@@ -1469,125 +1352,39 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   // HELPER WIDGETS - NEW PREMIUM DESIGN
   // ══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildStatBadge(String value, String label, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ✨ NEW: Large Metric Card (for Attended/Absent)
-  Widget _buildMetricCard(String value, String label, String subtitle, IconData icon, Color color, Color bgColor) {
+  Widget _buildMetricItem({
+    required String count,
+    required String label,
+    required Color color,
+    required Color bgColor,
+    required IconData icon,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withOpacity(0.2),
-          width: 1.5,
-        ),
+        border: Border.all(color: color.withOpacity(0.1)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: color.withOpacity(0.8),
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
-          ),
+          Icon(icon, color: color, size: 24),
           const SizedBox(height: 8),
           Text(
-            value,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: color,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 10,
-              color: color.withOpacity(0.6),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✨ NEW: Small Metric Card (for Present/Late/Leave)
-  Widget _buildSmallMetricCard(String value, String label, IconData icon, Color color, Color bgColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withOpacity(0.2),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 6),
-          Text(
-            value,
+            count,
             style: TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.bold,
               color: color,
-              height: 1,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: color.withOpacity(0.7),
+              color: color.withOpacity(0.8),
             ),
           ),
         ],
@@ -1807,153 +1604,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey.shade400,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 💎 Premium Glass Card
-  Widget _buildGlassCard() {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9), // Higher opacity for cleaner look
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.2), // Soft Purple Shadow
-            blurRadius: 30, // Big blur
-            offset: const Offset(0, 15),
-          ),
-        ],
-        border: Border.all(color: Colors.white, width: 2), // Clean white border
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Average Attendance',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF6B7280), // Medium Grey
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _getFormattedDate(),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade400,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5), // Light Green
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.trending_up, size: 16, color: Color(0xFF10B981)),
-                    SizedBox(width: 6),
-                    Text(
-                      'Good',
-                      style: TextStyle(
-                        color: Color(0xFF10B981),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${_dashboardStats['attendancePercentage']}%',
-                style: const TextStyle(
-                  fontSize: 52, // HUGE
-                  fontWeight: FontWeight.w900, // Black weight
-                  color: Color(0xFF111827), // Almost Black
-                  letterSpacing: -2.0,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Clean Progress Bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: (_dashboardStats['attendancePercentage'] as num? ?? 0) / 100,
-              backgroundColor: const Color(0xFFF3F4F6),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)), // Indigo
-              minHeight: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 💊 Premium Status Pill (Vertical)
-  Widget _buildStatusPill(String label, String value, IconData icon, Color color, Color bgColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24), // Very rounded
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04), // Subtle shadow
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: bgColor, // Pastel background
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1F2937),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF9CA3AF),
             ),
           ),
         ],

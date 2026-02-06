@@ -115,7 +115,7 @@ class AuthProvider with ChangeNotifier {
           name: user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],  // ✅ FIX: Use snake_case from API
-          schoolLogo: user['school_logo'],  // ✅ NEW: School logo URL
+          schoolLogo: _getFullLogoUrl(user['school_logo']),  // ✅ FIX: Prepend domain
           currentAcademicYear: user['currentAcademicYear'],  // ✅ NEW: Academic year
         );
 
@@ -279,7 +279,7 @@ class AuthProvider with ChangeNotifier {
           name: user['full_name'] ?? user['fullName'] ?? user['email'],
           role: user['role'] == 'teacher' ? UserRole.teacher : UserRole.parent,
           schoolName: user['school_name'],
-          schoolLogo: user['school_logo'],  // ✅ NEW: School logo URL
+          schoolLogo: _getFullLogoUrl(user['school_logo']),  // ✅ FIX: Prepend domain
           currentAcademicYear: user['currentAcademicYear'],
         );
         
@@ -301,6 +301,22 @@ class AuthProvider with ChangeNotifier {
       }
       return false;
     }
+  }
+
+  /// ✅ HELPER: Prepend domain if URL is relative
+  String? _getFullLogoUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    
+    // If already absolute URL, return as is
+    if (url.startsWith('http')) return url;
+    
+    // Remove /api/v1 from base URL to get root domain
+    final rootDomain = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+    
+    // Ensure URL starts with / if missing
+    final path = url.startsWith('/') ? url : '/$url';
+    
+    return '$rootDomain$path';
   }
   
   // ✅ CRITICAL FIX: Dispose API service to prevent memory leaks

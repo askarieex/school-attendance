@@ -306,32 +306,54 @@ class AutoAbsenceDetectionService {
 
                 if (phoneToUse) {
                   try {
-                    // Use whatsappService.sendAttendanceAlert which will automatically use SMS when WhatsApp is disabled
-                    const alertData = {
-                      parentPhone: phoneToUse,
-                      studentName: student.full_name,
-                      studentId: student.id,
-                      schoolId: school.school_id,
-                      status: 'absent',
-                      checkInTime: school.absence_check_time,
-                      schoolName: school.school_name,
-                      date: today
-                    };
+                    // ✅ FIX: Check if school can send WhatsApp (enabled + has credits)
+                    const School = require('../models/School');
+                    const canSend = await School.canSendWhatsApp(school.school_id);
 
-                    const result = await whatsappService.sendAttendanceAlert(alertData);
-
-                    if (result.success) {
-                      schoolNotified++;
-                      totalNotified++;
-                      console.log(`      📱 SMS sent to ${parentName}: ${maskPhone(phoneToUse)}`);
+                    if (!canSend) {
+                      const whatsappStatus = await School.getWhatsAppStatus(school.school_id);
+                      if (!whatsappStatus?.whatsapp_enabled) {
+                        console.log(`      ⚠️ WhatsApp DISABLED for ${school.school_name}, skipping notification`);
+                      } else if (whatsappStatus?.whatsapp_credits <= 0) {
+                        console.log(`      ⚠️ OUT OF CREDITS for ${school.school_name} (credits: ${whatsappStatus?.whatsapp_credits}), skipping notification`);
+                      }
+                      // Don't send notification, but continue processing other students
                     } else {
-                      console.error(`      ❌ SMS failed: ${result.error}`);
-                      totalErrors++;
+                      // Use whatsappService.sendAttendanceAlert which will automatically use SMS when WhatsApp is disabled
+                      const alertData = {
+                        parentPhone: phoneToUse,
+                        studentName: student.full_name,
+                        studentId: student.id,
+                        schoolId: school.school_id,
+                        status: 'absent',
+                        checkInTime: school.absence_check_time,
+                        schoolName: school.school_name,
+                        date: today
+                      };
+
+                      const result = await whatsappService.sendAttendanceAlert(alertData);
+
+                      if (result.success) {
+                        // ✅ FIX: Deduct credit after successful send (if not skipped/duplicate)
+                        if (!result.skipped) {
+                          const remainingCredits = await School.decrementWhatsAppCredit(school.school_id);
+                          if (remainingCredits !== null) {
+                            console.log(`      💳 Credit used. Remaining: ${remainingCredits}`);
+                          }
+                        }
+                        schoolNotified++;
+                        totalNotified++;
+                        console.log(`      📱 WhatsApp sent to ${parentName}: ${maskPhone(phoneToUse)}`);
+                      } else {
+                        console.error(`      ❌ WhatsApp failed: ${result.error}`);
+                        totalErrors++;
+                      }
                     }
                   } catch (smsError) {
-                    console.error(`      ❌ SMS failed: ${smsError.message}`);
+                    console.error(`      ❌ WhatsApp failed: ${smsError.message}`);
                     totalErrors++;
                   }
+
                 } else {
                   console.log(`      ⚠️  No phone number found for ${student.full_name} (tried guardian/parent/mother)`);
                 }
