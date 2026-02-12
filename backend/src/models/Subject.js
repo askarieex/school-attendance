@@ -85,7 +85,7 @@ class Subject {
         json_agg(
           DISTINCT jsonb_build_object(
             'teacher_id', t.id,
-            'teacher_name', u.name,
+            'teacher_name', u.full_name,
             'section_id', sec.id,
             'section_name', sec.section_name,
             'class_name', c.class_name
@@ -243,7 +243,7 @@ class Subject {
       `SELECT
         s.*,
         t.id as teacher_id,
-        u.name as teacher_name,
+        u.full_name as teacher_name,
         tca.is_form_teacher
       FROM subjects s
       JOIN teacher_class_assignments tca ON tca.subject_id = s.id
