@@ -27,7 +27,7 @@ const parseStudentExcel = (fileBuffer, options = {}) => {
     const students = data.map((row, index) => {
       // Handle various possible column names (flexible mapping)
       const student = {
-        fullName: row['Name (FIRST SECOND LAST)'] || row['Student Name'] || row['Full Name'] || row['Name'] || row['fullName'] || row['full_name'] || '',
+        fullName: row['Name (FIRST SECOND LAST)'] || row['Student Name'] || row['Full Name'] || row['Name'] || row['Name of Student'] || row['Name of Student '] || row['fullName'] || row['full_name'] || '',
         rollNumber: row['Roll Number'] || row['Roll No'] || row['RollNumber'] || row['roll_number'] || '',
         gender: row['Gender'] || row['gender'] || '',
         dob: row['DOB(dd-mm-YYYY)'] || row['DOB'] || row['Date of Birth'] || row['dob'] || '',
@@ -73,14 +73,18 @@ const validateStudents = (students) => {
       errors.push('Full Name is required');
     }
 
-    if (!student.gender || !['Male', 'Female', 'M', 'F', 'male', 'female', 'm', 'f'].includes(student.gender)) {
+    // Gender validation (optional - default to Male if not provided)
+    if (student.gender && !['Male', 'Female', 'M', 'F', 'male', 'female', 'm', 'f'].includes(student.gender)) {
       errors.push('Gender must be Male or Female');
     }
 
-    // Normalize gender
+    // Normalize gender or set default
     if (student.gender) {
       const g = student.gender.toLowerCase();
       student.gender = (g === 'male' || g === 'm') ? 'Male' : 'Female';
+    } else {
+      // Default to Male if not provided
+      student.gender = 'Male';
     }
 
     // Phone number validation (optional but if provided should be valid)
