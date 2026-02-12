@@ -28,7 +28,7 @@ const comparePassword = async (password, hash) => {
  */
 const generateAccessToken = (payload) => {
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    expiresIn: process.env.JWT_EXPIRES_IN || '24h',  // ✅ SECURITY FIX: Extended from 15m to 24h for better UX
   });
 };
 
@@ -39,7 +39,7 @@ const generateAccessToken = (payload) => {
  */
 const generateRefreshToken = (payload) => {
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',  // ✅ SECURITY FIX: Extended from 7d to 30d for better UX
   });
 };
 

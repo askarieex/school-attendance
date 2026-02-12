@@ -9,6 +9,9 @@ class TeacherService {
 
   TeacherService(this._apiService);
   
+  /// Expose apiService for use in other screens
+  ApiService get apiService => _apiService;
+  
   /// Get teacher's assigned classes/sections
   /// GET /api/v1/teacher/my-sections (dedicated teacher sections endpoint)
   Future<List<Map<String, dynamic>>> getTeacherAssignments({bool forceRefresh = false}) async {

@@ -95,6 +95,18 @@ const getDailyReport = async (req, res) => {
       absent // This list now contains students with status 'absent', 'holiday', or 'weekend'
     };
 
+    console.log(`📊 Daily Report for ${date}:`, {
+      dayType: dayStatus.type,
+      totalStudents: allStudents.total,
+      logsFound: attendanceLogs.logs.length,
+      presentCount: present.length,
+      absentCount: absent.filter(s => s.status === 'absent').length,
+      holidayCount: absent.filter(s => s.status === 'holiday').length,
+      weekendCount: absent.filter(s => s.status === 'weekend').length,
+      presentStudents: present.map(s => `${s.full_name} (${s.status})`),
+      absentStudents: absent.map(s => `${s.full_name} (${s.status})`)
+    });
+
     sendSuccess(res, report, 'Daily report generated successfully');
 
   } catch (error) {

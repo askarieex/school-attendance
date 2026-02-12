@@ -50,66 +50,102 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,  // ✅ White background like Adtenz branding
-      body: Center(
+      backgroundColor: Colors.white,
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo container with app icon
-            Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00D4FF).withOpacity(0.2),
-                    blurRadius: 30,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Image.asset(
-                  'assets/images/app_icon.png',
-                  fit: BoxFit.contain,
+            // Main content centered
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Logo container
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0095DA).withOpacity(0.15),
+                            blurRadius: 30,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset(
+                          'assets/images/app_icon.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // App name - ADTENZ
+                    const Text(
+                      'ADTENZ',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A1A),
+                        letterSpacing: 3.0,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Tagline
+                    const Text(
+                      'Smarter Attendance. Smarter Schools.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF888888),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Loading indicator
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0095DA)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 32),
 
-            // App name - ADTENZ branding
-            const Text(
-              'ADTENZ',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1A1A1A),  // Black text
-                letterSpacing: 2.0,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Tagline
-            const Text(
-              'Smarter Attendance. Smarter Schools.',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF666666),
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Loading indicator with brand color
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00D4FF)),  // Cyan brand color
+            // Bottom: Powered by
+            Padding(
+              padding: const EdgeInsets.only(bottom: 32),
+              child: Column(
+                children: [
+                  Text(
+                    'Powered by',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'ADTS Technologies',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0095DA),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

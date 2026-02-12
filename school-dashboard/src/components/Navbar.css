@@ -11,6 +11,59 @@
   height: 72px;
 }
 
+.navbar-brand {
+  display: flex;
+  align-items: center;
+}
+
+.school-branding {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.school-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.logo-placeholder {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.school-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.school-info h2 {
+  font-size: 1.125rem;
+  color: #111827;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.dashboard-subtitle {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .navbar-brand h2 {
   font-size: 1.125rem;
   color: #111827;

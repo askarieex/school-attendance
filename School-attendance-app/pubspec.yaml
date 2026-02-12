@@ -26,6 +26,10 @@ dependencies:
   jwt_decoder: ^2.0.1
   # ✅ PERFORMANCE: Network connectivity check
   connectivity_plus: ^5.0.2
+  # ✅ PDF Export functionality
+  pdf: ^3.10.7
+  printing: ^5.12.0
+  path_provider: ^2.1.2
 
 
 dev_dependencies:

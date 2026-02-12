@@ -244,9 +244,27 @@ const Reports = () => {
 
         <div className="report-grid-stats">
           <StatCard icon={FiUsers} label="Total Students" value={reportData.totalStudents} color={COLORS.primary} />
-          <StatCard icon={FiCheckCircle} label="On-Time" value={onTimeCount} subValue={reportData.punctualityRate ? `${reportData.punctualityRate}%` : null} color={COLORS.present} />
-          <StatCard icon={FiClock} label="Late" value={lateCount} subValue={`${reportData.attendanceRate}%`} color={COLORS.late} />
-          <StatCard icon={FiAlertTriangle} label="Absent" value={reportData.absentCount} color={COLORS.absent} />
+          <StatCard
+            icon={FiCheckCircle}
+            label="On-Time"
+            value={onTimeCount}
+            subValue={reportData.totalStudents > 0 ? `${Math.round((onTimeCount / reportData.totalStudents) * 100)}%` : '0%'}
+            color={COLORS.present}
+          />
+          <StatCard
+            icon={FiClock}
+            label="Late"
+            value={lateCount}
+            subValue={reportData.totalStudents > 0 ? `${Math.round((lateCount / reportData.totalStudents) * 100)}%` : '0%'}
+            color={COLORS.late}
+          />
+          <StatCard
+            icon={FiAlertTriangle}
+            label="Absent"
+            value={reportData.absentCount}
+            subValue={reportData.totalStudents > 0 ? `${Math.round((reportData.absentCount / reportData.totalStudents) * 100)}%` : '0%'}
+            color={COLORS.absent}
+          />
         </div>
 
         {/* Breakdown Section */}

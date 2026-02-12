@@ -5,7 +5,7 @@
 
     <application
         android:usesCleartextTraffic="true"
-        android:label="school_attendance"
+        android:label="ADTENZ"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
