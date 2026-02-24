@@ -26,6 +26,9 @@ import {
   ComposedChart, Scatter
 } from 'recharts';
 import { reportsAPI, sectionsAPI, studentsAPI } from '../utils/api';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import './Reports.css';
 
 // Chart Colors
@@ -848,6 +851,137 @@ const Reports = () => {
   );
 
   /* --- CLASS REPORT --- */
+  // ---- EXPORT FUNCTIONS ----
+
+  const getSelectedSectionName = () => {
+    const sec = sections.find(s => String(s.id) === String(selectedClass));
+    return sec ? `${sec.class_name} - ${sec.section_name}` : 'Class Report';
+  };
+
+  const getFilenameBase = () => {
+    const sec = sections.find(s => String(s.id) === String(selectedClass));
+    const name = sec ? `${sec.class_name}_${sec.section_name}`.replace(/\s+/g, '') : 'ClassReport';
+    const range = `${dateRange.startDate}_to_${dateRange.endDate}`;
+    return `${name}_${range}`;
+  };
+
+  const exportClassReportPDF = () => {
+    if (!reportData) return;
+    const { classInfo, attendanceStats, students } = reportData;
+    const stats = attendanceStats || {};
+    const studentList = students || [];
+    const sectionName = getSelectedSectionName();
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Class Attendance Report', pageWidth / 2, 18, { align: 'center' });
+
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'normal');
+    doc.text(sectionName, pageWidth / 2, 26, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${dateRange.startDate} to ${dateRange.endDate}`, pageWidth / 2, 33, { align: 'center' });
+
+    // Summary stats
+    const summaryY = 42;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total Students: ${classInfo?.totalStudents || studentList.length}`, 14, summaryY);
+    doc.text(`Attendance Rate: ${stats.attendanceRate || 0}%`, 80, summaryY);
+    doc.text(`Working Days: ${stats.totalWorkingDays || '-'}`, 155, summaryY);
+    doc.text(`Present: ${stats.present || 0}  |  Absent: ${stats.absent || 0}  |  Late: ${stats.late || 0}  |  Leave: ${stats.onLeave || 0}`, 14, summaryY + 7);
+
+    // Student table
+    const tableData = studentList.map(s => [
+      s.rollNumber || '-',
+      s.name,
+      s.present || 0,
+      s.absent || 0,
+      s.late || 0,
+      s.onLeave || 0,
+      `${s.attendanceRate || 0}%`
+    ]);
+
+    doc.autoTable({
+      head: [['Roll No', 'Name', 'Present', 'Absent', 'Late', 'Leave', 'Rate']],
+      body: tableData,
+      startY: summaryY + 14,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 60 },
+        6: { fontStyle: 'bold' }
+      }
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated on ${new Date().toLocaleString('en-IN')}  |  Page ${i} of ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+    }
+
+    doc.save(`${getFilenameBase()}.pdf`);
+  };
+
+  const exportClassReportExcel = () => {
+    if (!reportData) return;
+    const { classInfo, attendanceStats, students } = reportData;
+    const stats = attendanceStats || {};
+    const studentList = students || [];
+    const sectionName = getSelectedSectionName();
+
+    // Summary rows
+    const summaryData = [
+      ['Class Attendance Report'],
+      [sectionName],
+      [`Date Range: ${dateRange.startDate} to ${dateRange.endDate}`],
+      [],
+      ['Total Students', classInfo?.totalStudents || studentList.length, '', 'Attendance Rate', `${stats.attendanceRate || 0}%`, '', 'Working Days', stats.totalWorkingDays || '-'],
+      ['Present', stats.present || 0, '', 'Absent', stats.absent || 0, '', 'Late', stats.late || 0, '', 'Leave', stats.onLeave || 0],
+      [],
+      ['Roll No', 'Name', 'Present', 'Absent', 'Late', 'Leave', 'Rate (%)']
+    ];
+
+    // Student rows
+    const studentRows = studentList.map(s => [
+      s.rollNumber || '-',
+      s.name,
+      s.present || 0,
+      s.absent || 0,
+      s.late || 0,
+      s.onLeave || 0,
+      s.attendanceRate || 0
+    ]);
+
+    const wsData = [...summaryData, ...studentRows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 10 }, // Roll No
+      { wch: 30 }, // Name
+      { wch: 10 }, // Present
+      { wch: 10 }, // Absent
+      { wch: 10 }, // Late
+      { wch: 10 }, // Leave
+      { wch: 12 }, // Rate
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendance Report');
+    XLSX.writeFile(wb, `${getFilenameBase()}.xlsx`);
+  };
+
   const renderClassReport = () => {
     if (!reportData) return null;
     const { classInfo, attendanceStats, students } = reportData;
@@ -923,7 +1057,17 @@ const Reports = () => {
 
           {/* Student List */}
           <div className="chart-card col-span-2">
-            <h3>Student Performance ({studentList.length})</h3>
+            <div className="report-table-header">
+              <h3>Student Performance ({studentList.length})</h3>
+              <div className="export-actions">
+                <button className="btn-export btn-pdf" onClick={exportClassReportPDF} title="Export to PDF">
+                  <FiFileText size={16} /> PDF
+                </button>
+                <button className="btn-export btn-excel" onClick={exportClassReportExcel} title="Export to Excel">
+                  <FiDownload size={16} /> Excel
+                </button>
+              </div>
+            </div>
             <div className="table-container">
               <table className="data-table">
                 <thead>

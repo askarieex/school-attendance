@@ -260,6 +260,34 @@
   border-color: var(--primary);
 }
 
+.btn-pdf:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.btn-excel:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
+.report-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.report-table-header h3 {
+  margin: 0;
+}
+
+.export-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* Report Content */
 .report-content {
   background: var(--bg-card);
