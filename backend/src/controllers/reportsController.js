@@ -779,10 +779,11 @@ const getWeeklySummary = async (req, res) => {
       rangeEndDate.toISOString().split('T')[0]
     );
 
-    const allStudents = await Student.findAll(schoolId, 1, 1, { status: 'active' });
+    const allStudents = await Student.findAll(schoolId, 1, 10000, { status: 'active' });
     const totalStudents = allStudents.total;
 
     const weeks = [];
+    let currentWeekClassData = [];
 
     // Process 4 weeks
     for (let i = 0; i < 4; i++) {
@@ -805,7 +806,6 @@ const getWeeklySummary = async (req, res) => {
       // 🛑 REFACTORED: Use AttendanceCalculator to get true Working Days Count
       // -------------------------------------------------------------------------
       // We need to know how many working days were in THIS week (excluding Sun/Holidays)
-      // Note: This forces a loop inside a loop, but for 4 weeks it's okay (4 calls).
       const weeklyCalendar = await AttendanceCalculator.generateMonthlyCalendar(
         schoolId,
         weekStart.toISOString().split('T')[0],
@@ -821,19 +821,39 @@ const getWeeklySummary = async (req, res) => {
       });
 
       // Calculate stats
-      let totalPresent = 0;
-
-      // We can count distinct present students from the calendar aggregation
-      // dailyStats has 'present + late' count for each day.
-      // Total Present Man-Days = Sum (Daily Present Counts)
-      // This is better than Set approach because a student present on Mon and Tue counts as 2 "Present Man-Days".
-      // The previous logic counted "Attendance Rate" as (Total Present / Max Possible Man-Days).
-
-      totalPresent = weeklyCalendar.reduce((sum, day) => sum + day.present + day.late, 0);
+      const totalPresent = weeklyCalendar.reduce((sum, day) => sum + day.present, 0);
+      const totalLate = weeklyCalendar.reduce((sum, day) => sum + day.late, 0);
 
       // Max Possible = Total Students * Working Days
       const maxPossible = totalStudents * workingDaysInWeek;
-      const avgAttendance = maxPossible > 0 ? Math.round((totalPresent / maxPossible) * 100) : 0;
+      const totalPunctualAndLate = totalPresent + totalLate;
+      const avgAttendance = maxPossible > 0 ? Math.round((totalPunctualAndLate / maxPossible) * 100) : 0;
+      const totalAbsent = maxPossible - totalPunctualAndLate;
+
+      // Current week calculation for Class Performance
+      if (i === 0) {
+        const classMap = {};
+        allStudents.students.forEach(s => {
+          const cName = s.class_name || s.grade || 'Unknown';
+          if (!classMap[cName]) classMap[cName] = { name: cName, students: 0, presentAndLate: 0 };
+          classMap[cName].students++;
+        });
+
+        weekLogs.forEach(log => {
+          const cName = log.class_name || log.grade || 'Unknown';
+          if (classMap[cName] && (log.status === 'present' || log.status === 'late')) {
+            classMap[cName].presentAndLate++;
+          }
+        });
+
+        currentWeekClassData = Object.values(classMap).map(c => {
+          const max = c.students * workingDaysInWeek;
+          return {
+            className: c.name,
+            attendanceRate: max > 0 ? Math.round((c.presentAndLate / max) * 100) : 0
+          };
+        }).sort((a, b) => b.attendanceRate - a.attendanceRate);
+      }
 
       weeks.push({
         weekNumber: 4 - i,
@@ -841,14 +861,26 @@ const getWeeklySummary = async (req, res) => {
         startDate: weekStart.toISOString().split('T')[0],
         endDate: weekEnd.toISOString().split('T')[0],
         avgAttendance,
-        totalPresent,
-        totalAbsent: maxPossible - totalPresent,
-        workingDays: workingDaysInWeek, // Added for clarity
+        present: totalPresent,
+        late: totalLate,
+        absent: totalAbsent,
+        workingDays: workingDaysInWeek,
         status: avgAttendance >= 90 ? 'Excellent' : avgAttendance >= 75 ? 'Good' : 'Poor'
       });
     }
 
-    sendSuccess(res, { weeks: weeks.reverse() }, 'Weekly summary generated successfully');
+    // Format final response to match frontend expectations (`weeklyStats` and `classData`)
+    const weeklyStats = weeks.map(w => ({
+      date: `Week ${w.weekNumber}`, // Displayed as labels on the XAxis
+      present: w.present,
+      late: w.late,
+      absent: w.absent
+    })).reverse();
+
+    sendSuccess(res, {
+      weeklyStats: weeklyStats,
+      classData: currentWeekClassData
+    }, 'Weekly summary generated successfully');
   } catch (error) {
     console.error('Get weekly summary error:', error);
     sendError(res, 'Failed to generate weekly summary: ' + error.message, 500);
