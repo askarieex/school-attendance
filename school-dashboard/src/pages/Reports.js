@@ -159,7 +159,7 @@ const Reports = () => {
           break;
         case 'comparison':
           // Mock data for now as placeholder
-          response = { success: true, data: { classes: classes.map(c => ({ className: c.class_name, avgAttendance: Math.floor(Math.random() * 30 + 70) })) } };
+          response = { success: true, data: { classes: sections.map(c => ({ className: c.class_name, avgAttendance: Math.floor(Math.random() * 30 + 70) })) } };
           break;
         default:
           break;
