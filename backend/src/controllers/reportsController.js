@@ -658,11 +658,12 @@ const getClassReport = async (req, res) => {
     }
 
     // Get all students in the class/section
+    // IMPORTANT: Student.findAll uses camelCase keys (sectionId, classId), NOT snake_case
     const studentFilters = { status: 'active' };
     if (filterType === 'section') {
-      studentFilters.section_id = classId;
+      studentFilters.sectionId = classId;
     } else {
-      studentFilters.grade = classId;
+      studentFilters.classId = classId;
     }
 
     const students = await Student.findAll(schoolId, 1, 10000, studentFilters);
