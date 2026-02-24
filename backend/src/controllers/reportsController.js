@@ -455,18 +455,16 @@ const getStudentReport = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
-    // Get attendance logs for the student
-    const logs = await AttendanceLog.findAll(schoolId, 1, 10000, {
-      startDate,
-      endDate,
-      studentId: studentId
-    });
+    // Get attendance logs for the student in the date range
+    // Note: getLogsForDateRange returns raw array, we then filter for this specific student
+    const allLogs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
+    const studentLogs = allLogs.filter(log => String(log.student_id) === String(studentId));
 
     // -------------------------------------------------------------------------
     // 🛑 REFACTORED: Use AttendanceCalculator for Single Student logic
     // -------------------------------------------------------------------------
     // We pass ONLY this student's logs to the calculator, so the result is just for them.
-    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logs.logs);
+    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, studentLogs);
 
     let totalWorkingDays = 0;
     const detailedLogs = [];
@@ -509,7 +507,10 @@ const getStudentReport = async (req, res) => {
       // Wait, AttendanceCalculator.generateMonthlyCalendar returns aggregated stats, NOT the raw log details.
       // 
       // FIX: We need to find the raw log for this date to get check_in_time.
-      const originalLog = logs.logs.find(l => new Date(l.date).toISOString().split('T')[0] === dateStr);
+      const originalLog = studentLogs.find(l => {
+        const logDate = typeof l.date === 'string' ? l.date.split('T')[0] : new Date(l.date).toISOString().split('T')[0];
+        return logDate === dateStr;
+      });
 
       if (originalLog) {
         detailedLogs.push({
@@ -527,6 +528,13 @@ const getStudentReport = async (req, res) => {
         });
       }
     });
+
+    // Calculate statistics from detailedLogs
+    const presentDays = detailedLogs.filter(l => l.status === 'present').length;
+    const lateDays = detailedLogs.filter(l => l.status === 'late').length;
+    const absentDays = detailedLogs.filter(l => l.status === 'absent').length;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
 
     const report = {
       student,
