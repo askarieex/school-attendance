@@ -666,7 +666,15 @@ const getClassReport = async (req, res) => {
       studentFilters.classId = classId;
     }
 
+    console.log(`🔍 [getClassReport] classId param = "${classId}", filterType = "${filterType}"`);
+    console.log(`🔍 [getClassReport] studentFilters =`, JSON.stringify(studentFilters));
+
     const students = await Student.findAll(schoolId, 1, 10000, studentFilters);
+
+    console.log(`🔍 [getClassReport] Student.findAll returned ${students.total} students (expected ~56, NOT 88)`);
+    if (students.students.length > 0) {
+      console.log(`🔍 [getClassReport] First student: id=${students.students[0].id}, name=${students.students[0].full_name}, section_id=${students.students[0].section_id}`);
+    }
 
     // Get attendance data for the date range
     const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
