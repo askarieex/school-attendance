@@ -43,15 +43,22 @@ const getDailyReport = async (req, res) => {
     const absent = []; // Renamed contextually: "absent or holiday/weekend"
 
     allStudents.students.forEach(student => {
-      // 1. Check for Log (Present/Late)
+      // 1. Check for Log (Present/Late/Absent/Leave/Holiday)
       if (attendanceMap.has(student.id)) {
         const log = attendanceMap.get(student.id);
-        present.push({
+        const studentDataToPush = {
           ...student,
           checkInTime: log.check_in_time,
           checkOutTime: log.check_out_time,
           status: log.status
-        });
+        };
+
+        if (log.status === 'present' || log.status === 'late') {
+          present.push(studentDataToPush);
+        } else {
+          // If the DB explicitly says 'absent', 'holiday', or 'weekend' in the log
+          absent.push(studentDataToPush);
+        }
       } else {
         // 2. No Log Found -> Check Day Status
         let status = 'absent'; // Default
