@@ -27,7 +27,7 @@ import {
 } from 'recharts';
 import { reportsAPI, sectionsAPI, studentsAPI } from '../utils/api';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import './Reports.css';
 
@@ -907,7 +907,7 @@ const Reports = () => {
       `${s.attendanceRate || 0}%`
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       head: [['Roll No', 'Name', 'Present', 'Absent', 'Late', 'Leave', 'Rate']],
       body: tableData,
       startY: summaryY + 14,
