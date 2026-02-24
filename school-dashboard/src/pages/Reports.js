@@ -25,7 +25,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ComposedChart, Scatter
 } from 'recharts';
-import { reportsAPI, classesAPI, studentsAPI } from '../utils/api';
+import { reportsAPI, sectionsAPI, studentsAPI } from '../utils/api';
 import './Reports.css';
 
 // Chart Colors
@@ -61,7 +61,7 @@ const Reports = () => {
   const [selectedStudent, setSelectedStudent] = useState('');
 
   // Data State
-  const [classes, setClasses] = useState([]);
+  const [sections, setSections] = useState([]);
   const [students, setStudents] = useState([]);
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -82,22 +82,22 @@ const Reports = () => {
     { value: 'comparison', label: 'Class Comparison', icon: FiBarChart2, description: 'Cross-class metrics', color: '#14B8A6', filters: [] }
   ];
 
-  const fetchClasses = useCallback(async () => {
+  const fetchSections = useCallback(async () => {
     try {
-      const response = await classesAPI.getAll();
+      const response = await sectionsAPI.getAll();
       if (response.success) {
-        const classList = Array.isArray(response.data) ? response.data : (response.data.classes || []);
-        setClasses(classList);
+        const sectionList = Array.isArray(response.data) ? response.data : (response.data.sections || []);
+        setSections(sectionList);
       }
     } catch (error) {
-      console.error('Error fetching classes:', error);
+      console.error('Error fetching sections:', error);
     }
   }, []);
 
   const fetchStudents = useCallback(async () => {
-    if (!selectedClass) return;
+    if (!selectedClass) return; // Note: selectedClass actually holds the section ID now
     try {
-      const response = await studentsAPI.getAll({ classId: selectedClass });
+      const response = await studentsAPI.getAll({ sectionId: selectedClass });
       if (response.success) {
         const studentsList = Array.isArray(response.data) ? response.data : (response.data.students || []);
         setStudents(studentsList);
@@ -108,7 +108,7 @@ const Reports = () => {
     }
   }, [selectedClass]);
 
-  useEffect(() => { fetchClasses(); }, [fetchClasses]);
+  useEffect(() => { fetchSections(); }, [fetchSections]);
   useEffect(() => { if (selectedClass) fetchStudents(); }, [selectedClass, fetchStudents]);
 
   const generateReport = async () => {
@@ -1125,7 +1125,7 @@ const Reports = () => {
                 <label>Select Class</label>
                 <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudent(''); }}>
                   <option value="">-- Choose Class --</option>
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                  {sections.map(s => <option key={s.id} value={s.id}>{s.class_name} - {s.section_name}</option>)}
                 </select>
               </div>
             )}

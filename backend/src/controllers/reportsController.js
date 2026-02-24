@@ -626,10 +626,10 @@ const getStudentReport = async (req, res) => {
   }
 };
 
-// Get class-specific report
+// Get class-specific report (Now primarily uses sectionId)
 const getClassReport = async (req, res) => {
   try {
-    const { classId } = req.params;
+    const { classId } = req.params; // We are passing sectionId from frontend as 'classId' due to route naming
     const { startDate, endDate } = req.query;
     const schoolId = req.tenantSchoolId;
 
@@ -637,27 +637,47 @@ const getClassReport = async (req, res) => {
       return sendError(res, 'Start date and end date are required', 400);
     }
 
-    // Get class details
-    const classData = await query(
-      `SELECT * FROM classes WHERE id = $1 AND school_id = $2`,
-      [classId, schoolId]
+    // Attempt to get as Section first
+    let classData = await query(
+      `SELECT s.*, c.class_name FROM sections s JOIN classes c ON s.class_id = c.id WHERE s.id = $1`,
+      [classId]
     );
 
+    let filterType = 'section';
     if (classData.rows.length === 0) {
-      return sendError(res, 'Class not found', 404);
+      // Fallback: Check if it's a base Class instead
+      classData = await query(
+        `SELECT * FROM classes WHERE id = $1 AND school_id = $2`,
+        [classId, schoolId]
+      );
+      filterType = 'class';
     }
 
-    // Get all students in the class
-    const students = await Student.findAll(schoolId, 1, 10000, {
-      grade: classId,
-      status: 'active'
-    });
+    if (classData.rows.length === 0) {
+      return sendError(res, 'Class/Section not found', 404);
+    }
+
+    // Get all students in the class/section
+    const studentFilters = { status: 'active' };
+    if (filterType === 'section') {
+      studentFilters.section_id = classId;
+    } else {
+      studentFilters.grade = classId;
+    }
+
+    const students = await Student.findAll(schoolId, 1, 10000, studentFilters);
 
     // Get attendance data for the date range
     const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
 
-    // Filter logs for this class
-    const classLogs = logs.filter(log => String(log.grade) === String(classId) || String(log.class_id) === String(classId));
+    // Filter logs for this class/section
+    const classLogs = logs.filter(log => {
+      if (filterType === 'section') {
+        return String(log.section_id) === String(classId);
+      } else {
+        return String(log.grade) === String(classId) || String(log.class_id) === String(classId);
+      }
+    });
 
     // -------------------------------------------------------------------------
     // 🛑 REFACTORED: Use AttendanceCalculator Class-Wise Logic
