@@ -756,12 +756,54 @@ const getClassReport = async (req, res) => {
       };
     });
 
+    // -------------------------------------------------------------------------
+    // Daily Breakdown for charts
+    // -------------------------------------------------------------------------
+    const dailyBreakdown = [];
+    calendar.forEach(day => {
+      if (day.isWeekend || day.isHoliday) return;
+      const dayStr = day.date; // e.g. "2026-02-16"
+      const dayLogs = classLogs.filter(log => {
+        const logDate = new Date(log.date).toISOString().split('T')[0];
+        return logDate === dayStr;
+      });
+
+      let dayPresent = 0, dayLate = 0, dayAbsent = 0;
+      // Count students with logs for this day
+      const loggedStudentIds = new Set();
+      dayLogs.forEach(l => {
+        loggedStudentIds.add(String(l.student_id));
+        if (l.status === 'present') dayPresent++;
+        else if (l.status === 'late') dayLate++;
+        else if (l.status === 'absent') dayAbsent++;
+      });
+      // Students without any log on this working day = absent
+      dayAbsent += (totalStudents - loggedStudentIds.size);
+
+      const dayRate = totalStudents > 0
+        ? parseFloat(((dayPresent + dayLate) / totalStudents * 100).toFixed(1))
+        : 0;
+
+      // Format date label (e.g. "16 Feb")
+      const d = new Date(dayStr + 'T00:00:00');
+      const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+      dailyBreakdown.push({
+        date: dayStr,
+        label,
+        present: dayPresent,
+        late: dayLate,
+        absent: dayAbsent,
+        rate: dayRate
+      });
+    });
+
     const maxPossibleAttendance = totalStudents * totalWorkingDays;
     const avgAttendance = maxPossibleAttendance > 0
       ? (((classTotalPresent + classTotalLate) / maxPossibleAttendance) * 100).toFixed(1)
       : 0;
 
-    // The Frontend `renderClassReport` expects: classInfo, attendanceStats, students
+    // The Frontend `renderClassReport` expects: classInfo, attendanceStats, students, dailyBreakdown
     const report = {
       classInfo: {
         ...classData.rows[0],
@@ -777,6 +819,7 @@ const getClassReport = async (req, res) => {
         attendanceRate: parseFloat(avgAttendance)
       },
       students: processedStudents,
+      dailyBreakdown
     };
 
     sendSuccess(res, report, 'Class report generated successfully');

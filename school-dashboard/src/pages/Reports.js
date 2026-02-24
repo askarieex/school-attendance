@@ -1028,18 +1028,78 @@ const Reports = () => {
           />
         </div>
 
+        {/* Daily Attendance Bar Chart - Full Width */}
+        {reportData.dailyBreakdown && reportData.dailyBreakdown.length > 0 && (
+          <div className="chart-card" style={{ marginBottom: '1.25rem' }}>
+            <h3>📊 Daily Attendance Breakdown</h3>
+            <div className="chart-container">
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={reportData.dailyBreakdown} barGap={2}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="present" name="Present" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="late" name="Late" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="absent" name="Absent" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
         <div className="charts-row three-cols">
-          {/* Chart */}
+          {/* Attendance Rate Trend */}
+          {reportData.dailyBreakdown && reportData.dailyBreakdown.length > 0 && (
+            <div className="chart-card col-span-2">
+              <h3>📈 Attendance Rate Trend</h3>
+              <div className="chart-container">
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={reportData.dailyBreakdown}>
+                    <defs>
+                      <linearGradient id="colorRate" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#64748b' }} unit="%" />
+                    <Tooltip
+                      formatter={(value) => [`${value}%`, 'Rate']}
+                      contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="rate"
+                      stroke="#6366f1"
+                      strokeWidth={2.5}
+                      fill="url(#colorRate)"
+                      dot={{ fill: '#6366f1', r: 4, strokeWidth: 2, stroke: '#fff' }}
+                      activeDot={{
+                        r: 6
+                      }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Pie Chart */}
           <div className="chart-card">
             <h3>Attendance Distribution</h3>
             <div className="chart-container">
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
+                    innerRadius={55}
                     outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
@@ -1054,55 +1114,55 @@ const Reports = () => {
               </ResponsiveContainer>
             </div>
           </div>
+        </div>
 
-          {/* Student List */}
-          <div className="chart-card col-span-2">
-            <div className="report-table-header">
-              <h3>Student Performance ({studentList.length})</h3>
-              <div className="export-actions">
-                <button className="btn-export btn-pdf" onClick={exportClassReportPDF} title="Export to PDF">
-                  <FiFileText size={16} /> PDF
-                </button>
-                <button className="btn-export btn-excel" onClick={exportClassReportExcel} title="Export to Excel">
-                  <FiDownload size={16} /> Excel
-                </button>
-              </div>
+        {/* Student List */}
+        <div className="chart-card col-span-2">
+          <div className="report-table-header">
+            <h3>Student Performance ({studentList.length})</h3>
+            <div className="export-actions">
+              <button className="btn-export btn-pdf" onClick={exportClassReportPDF} title="Export to PDF">
+                <FiFileText size={16} /> PDF
+              </button>
+              <button className="btn-export btn-excel" onClick={exportClassReportExcel} title="Export to Excel">
+                <FiDownload size={16} /> Excel
+              </button>
             </div>
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Roll No</th>
-                    <th>Name</th>
-                    <th>Present</th>
-                    <th>Absent</th>
-                    <th>Late</th>
-                    <th>Rate</th>
+          </div>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Roll No</th>
+                  <th>Name</th>
+                  <th>Present</th>
+                  <th>Absent</th>
+                  <th>Late</th>
+                  <th>Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentList.map((student, idx) => (
+                  <tr key={idx}>
+                    <td>{student.rollNumber}</td>
+                    <td className="font-medium">{student.name}</td>
+                    <td className="text-green">{student.present || 0}</td>
+                    <td className="text-red">{student.absent || 0}</td>
+                    <td className="text-orange">{student.late || 0}</td>
+                    <td>
+                      <span className={`status-badge ${(student.attendanceRate || 0) >= 75 ? 'success' : 'danger'}`}>
+                        {student.attendanceRate || 0}%
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {studentList.map((student, idx) => (
-                    <tr key={idx}>
-                      <td>{student.rollNumber}</td>
-                      <td className="font-medium">{student.name}</td>
-                      <td className="text-green">{student.present || 0}</td>
-                      <td className="text-red">{student.absent || 0}</td>
-                      <td className="text-orange">{student.late || 0}</td>
-                      <td>
-                        <span className={`status-badge ${(student.attendanceRate || 0) >= 75 ? 'success' : 'danger'}`}>
-                          {student.attendanceRate || 0}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {studentList.length === 0 && (
-                    <tr>
-                      <td colSpan="6" className="text-center">No student data available for this range.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ))}
+                {studentList.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="text-center">No student data available for this range.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
