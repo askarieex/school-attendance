@@ -657,24 +657,35 @@ const getClassReport = async (req, res) => {
       return sendError(res, 'Class/Section not found', 404);
     }
 
-    // Get all students in the class/section
-    // IMPORTANT: Student.findAll uses camelCase keys (sectionId, classId), NOT snake_case
-    const studentFilters = { status: 'active' };
+    // -------------------------------------------------------------------------
+    // DIRECT SQL: Get students for this class/section (bypass Student.findAll)
+    // -------------------------------------------------------------------------
+    let studentQuery, studentParams;
     if (filterType === 'section') {
-      studentFilters.sectionId = classId;
+      studentQuery = `
+        SELECT s.id, s.full_name, s.roll_number, s.section_id, s.class_id
+        FROM students s
+        WHERE s.school_id = $1 AND s.is_active = TRUE AND s.section_id = $2
+        ORDER BY CASE WHEN s.roll_number ~ '^[0-9]+$' THEN CAST(s.roll_number AS INTEGER) ELSE 999999 END ASC,
+                 s.roll_number ASC, s.full_name ASC
+      `;
+      studentParams = [schoolId, classId];
     } else {
-      studentFilters.classId = classId;
+      studentQuery = `
+        SELECT s.id, s.full_name, s.roll_number, s.section_id, s.class_id
+        FROM students s
+        WHERE s.school_id = $1 AND s.is_active = TRUE AND s.class_id = $2
+        ORDER BY CASE WHEN s.roll_number ~ '^[0-9]+$' THEN CAST(s.roll_number AS INTEGER) ELSE 999999 END ASC,
+                 s.roll_number ASC, s.full_name ASC
+      `;
+      studentParams = [schoolId, classId];
     }
 
-    console.log(`🔍 [getClassReport] classId param = "${classId}", filterType = "${filterType}"`);
-    console.log(`🔍 [getClassReport] studentFilters =`, JSON.stringify(studentFilters));
+    const studentResult = await query(studentQuery, studentParams);
+    const studentList = studentResult.rows;
+    const totalStudents = studentList.length;
 
-    const students = await Student.findAll(schoolId, 1, 10000, studentFilters);
-
-    console.log(`🔍 [getClassReport] Student.findAll returned ${students.total} students (expected ~56, NOT 88)`);
-    if (students.students.length > 0) {
-      console.log(`🔍 [getClassReport] First student: id=${students.students[0].id}, name=${students.students[0].full_name}, section_id=${students.students[0].section_id}`);
-    }
+    console.log(`🔍 [getClassReport] classId="${classId}", filterType="${filterType}", totalStudents=${totalStudents}`);
 
     // Get attendance data for the date range
     const logs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
@@ -688,27 +699,23 @@ const getClassReport = async (req, res) => {
       }
     });
 
+    console.log(`🔍 [getClassReport] Total logs in range: ${logs.length}, classLogs after filter: ${classLogs.length}`);
+
     // -------------------------------------------------------------------------
-    // 🛑 REFACTORED: Use AttendanceCalculator Class-Wise Logic
+    // Calculate working days and per-student stats
     // -------------------------------------------------------------------------
-    // 1. Get total working days count for the range
     const calendar = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, logs);
     let totalWorkingDays = 0;
     calendar.forEach(d => {
       if (!d.isWeekend && !d.isHoliday) totalWorkingDays++;
     });
 
-    // 2. Process dails per class (keep for potential future use)
-    const dailyStats = {};
-
-    // 3. Process Per-Student Data (This is what the frontend actually needs!)
     let classTotalPresent = 0;
     let classTotalLate = 0;
     let classTotalAbsent = 0;
     let classTotalOnLeave = 0;
 
-    const processedStudents = students.students.map(student => {
-      // Find all logs for this specific student in the date range
+    const processedStudents = studentList.map(student => {
       const sLogs = classLogs.filter(log => String(log.student_id) === String(student.id));
 
       let sPresent = 0;
@@ -716,15 +723,14 @@ const getClassReport = async (req, res) => {
       let sAbsent = 0;
       let sLeave = 0;
 
-      // We only count absence against working days. 
-      // A student's total attendance should be checked against totalWorkingDays.
       sLogs.forEach(l => {
         if (l.status === 'present') sPresent++;
         else if (l.status === 'late') sLate++;
         else if (l.status === 'absent') sAbsent++;
+        else if (l.status === 'leave') sLeave++;
       });
 
-      // Calculate missing absent days (if a student has no log on a working day, they are absent)
+      // Calculate missing absent days (working day with no log = absent)
       const mappedDays = sPresent + sLate + sAbsent + sLeave;
       if (mappedDays < totalWorkingDays) {
         sAbsent += (totalWorkingDays - mappedDays);
@@ -750,7 +756,7 @@ const getClassReport = async (req, res) => {
       };
     });
 
-    const maxPossibleAttendance = students.total * totalWorkingDays;
+    const maxPossibleAttendance = totalStudents * totalWorkingDays;
     const avgAttendance = maxPossibleAttendance > 0
       ? (((classTotalPresent + classTotalLate) / maxPossibleAttendance) * 100).toFixed(1)
       : 0;
@@ -759,19 +765,18 @@ const getClassReport = async (req, res) => {
     const report = {
       classInfo: {
         ...classData.rows[0],
-        totalStudents: students.total
+        totalStudents: totalStudents
       },
       dateRange: { startDate, endDate },
       attendanceStats: {
-        totalWorkingDays, // Just for reference
+        totalWorkingDays,
         present: classTotalPresent,
         late: classTotalLate,
         absent: classTotalAbsent,
         onLeave: classTotalOnLeave,
         attendanceRate: parseFloat(avgAttendance)
       },
-      students: processedStudents, // Expected to have: rollNumber, name, present, absent, late, attendanceRate
-      dailyStats // Keeping it in case other logic needs it
+      students: processedStudents,
     };
 
     sendSuccess(res, report, 'Class report generated successfully');
