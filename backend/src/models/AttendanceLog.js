@@ -271,6 +271,7 @@ class AttendanceLog {
         s.full_name as student_name,
         s.rfid_card_id as rfid_uid,
         s.grade,
+        s.section_id,
         d.device_name
        FROM attendance_logs al
        JOIN students s ON al.student_id = s.id
