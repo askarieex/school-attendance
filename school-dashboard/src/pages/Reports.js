@@ -234,10 +234,11 @@ const Reports = () => {
             <div>
               <h2>Daily Attendance Report</h2>
               <p>{new Date(reportData.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              {reportData.isNonWorkingDay && <p style={{ marginTop: '4px', fontSize: '14px', opacity: 0.9 }}>📅 {reportData.dayName} — {reportData.dayType}</p>}
             </div>
             <div className="header-score">
-              <span>{reportData.attendanceRate}%</span>
-              <small>Overall</small>
+              <span>{reportData.attendanceRate === 'N/A' ? 'N/A' : `${reportData.attendanceRate}%`}</span>
+              <small>{reportData.isNonWorkingDay ? reportData.dayType : 'Overall'}</small>
             </div>
           </div>
         </div>
@@ -248,21 +249,21 @@ const Reports = () => {
             icon={FiCheckCircle}
             label="On-Time"
             value={onTimeCount}
-            subValue={reportData.totalStudents > 0 ? `${Math.round((onTimeCount / reportData.totalStudents) * 100)}%` : '0%'}
+            subValue={reportData.isNonWorkingDay ? 'N/A' : (reportData.totalStudents > 0 ? `${Math.round((onTimeCount / reportData.totalStudents) * 100)}%` : '0%')}
             color={COLORS.present}
           />
           <StatCard
             icon={FiClock}
             label="Late"
             value={lateCount}
-            subValue={reportData.totalStudents > 0 ? `${Math.round((lateCount / reportData.totalStudents) * 100)}%` : '0%'}
+            subValue={reportData.isNonWorkingDay ? 'N/A' : (reportData.totalStudents > 0 ? `${Math.round((lateCount / reportData.totalStudents) * 100)}%` : '0%')}
             color={COLORS.late}
           />
           <StatCard
             icon={FiAlertTriangle}
             label="Absent"
             value={reportData.absentCount}
-            subValue={reportData.totalStudents > 0 ? `${Math.round((reportData.absentCount / reportData.totalStudents) * 100)}%` : '0%'}
+            subValue={reportData.isNonWorkingDay ? 'N/A' : (reportData.totalStudents > 0 ? `${Math.round((reportData.absentCount / reportData.totalStudents) * 100)}%` : '0%')}
             color={COLORS.absent}
           />
         </div>

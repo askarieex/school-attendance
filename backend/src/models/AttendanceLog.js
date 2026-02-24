@@ -40,19 +40,6 @@ class AttendanceLog {
     return result.rows[0];
   }
 
-  /**
-   * Get raw logs for a date range (Added for Weekly Report)
-   */
-  static async getLogsForDateRange(schoolId, startDate, endDate) {
-    const result = await query(
-      `SELECT * FROM attendance_logs
-       WHERE school_id = $1
-       AND date >= $2 AND date <= $3
-       ORDER BY date ASC, check_in_time ASC`,
-      [schoolId, startDate, endDate]
-    );
-    return result.rows;
-  }
 
   /**
    * Get today's attendance stats for a school

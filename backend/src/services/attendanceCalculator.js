@@ -145,7 +145,8 @@ class AttendanceCalculator {
             const dateStr = curr.toISOString().split('T')[0];
             statsMap[dateStr] = { date: dateStr, present: 0, absent: 0, late: 0, holiday: 0, weekend: 0, total: 0 };
 
-            const dayOfWeek = curr.getDay();
+            // ✅ Deep Fix: Use getUTCDay() for "YYYY-MM-DD" dates parsed as UTC midnight
+            const dayOfWeek = curr.getUTCDay();
 
             // Check Day Type
             // 1. Specific Holiday (High Priority)

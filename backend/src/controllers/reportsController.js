@@ -3,6 +3,7 @@ const Student = require('../models/Student');
 const AttendanceCalculator = require('../services/attendanceCalculator');
 const { sendSuccess, sendError } = require('../utils/response');
 const { query } = require('../config/database');
+const { getCurrentDateIST } = require('../utils/timezone');
 
 /**
  * REPORTS MANAGEMENT
@@ -78,21 +79,26 @@ const getDailyReport = async (req, res) => {
     const onTimeStudents = present.filter(s => s.status === 'present');
     const lateStudents = present.filter(s => s.status === 'late');
 
+    // ✅ FIX D2: On holidays/weekends, attendance rate should be 'N/A' not 0%
+    const isNonWorkingDay = dayStatus.type !== 'WORKING';
+    const trueAbsentCount = absent.filter(s => s.status === 'absent').length;
+
     const report = {
       date,
       dayType: dayStatus.type, // 'WORKING', 'HOLIDAY', 'WEEKEND'
       dayName: dayStatus.name, // e.g. "Republic Day" or "Sunday"
+      isNonWorkingDay,
       totalStudents: allStudents.total,
       presentCount: present.length, // Total Present (On-Time + Late)
       onTimeCount: onTimeStudents.length, // Students who arrived on time
       lateCount: lateStudents.length, // Students who arrived late
-      absentCount: absent.filter(s => s.status === 'absent').length, // Only true absents
+      absentCount: trueAbsentCount, // Only true absents
       holidayCount: absent.filter(s => s.status === 'holiday').length,
       weekendCount: absent.filter(s => s.status === 'weekend').length,
-      attendanceRate: allStudents.total > 0 ? ((present.length / allStudents.total) * 100).toFixed(2) : 0,
-      punctualityRate: allStudents.total > 0 ? ((onTimeStudents.length / allStudents.total) * 100).toFixed(2) : 0,
+      attendanceRate: isNonWorkingDay ? 'N/A' : (allStudents.total > 0 ? ((present.length / allStudents.total) * 100).toFixed(2) : 0),
+      punctualityRate: isNonWorkingDay ? 'N/A' : (allStudents.total > 0 ? ((onTimeStudents.length / allStudents.total) * 100).toFixed(2) : 0),
       present,
-      absent // This list now contains students with status 'absent', 'holiday', or 'weekend'
+      absent: isNonWorkingDay ? [] : absent.filter(s => s.status === 'absent') // ✅ FIX D1: Only send truly absent students
     };
 
     console.log(`📊 Daily Report for ${date}:`, {
@@ -151,15 +157,13 @@ const getMonthlyReport = async (req, res) => {
     let totalHolidays = 0;
     let totalSundays = 0; // Keeping variable name, but now tracks 'Weekends'
 
-    // Get today's date for comparison
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset to midnight for accurate date comparison
+    // Get today's exact IST date string for robust comparison
+    const todayIST = getCurrentDateIST();
 
     dailyStats.forEach(dayStat => {
-      // Skip future dates - only count days up to today
-      const statDate = new Date(dayStat.date);
-      statDate.setHours(0, 0, 0, 0);
-      if (statDate > today) {
+      // ✅ Deep Fix: Avoid JS Date local timezone shifting by using string comparison
+      // "2026-02-24" > "2026-02-23" is lexicographically correct
+      if (dayStat.date > todayIST) {
         return; // Skip this day
       }
 
@@ -214,7 +218,8 @@ const getMonthlyReport = async (req, res) => {
     const weeks = [];
     let currentWeek = { days: [], total: 0, present: 0 };
     dailyData.forEach((day, index) => {
-      const dayOfWeek = new Date(day.date).getDay();
+      // ✅ Deep Fix: Use getUTCDay() for "YYYY-MM-DD" dates parsed as UTC midnight
+      const dayOfWeek = new Date(day.date).getUTCDay();
       currentWeek.days.push(day);
       currentWeek.total += (day.present + day.absent);
       currentWeek.present += day.present;
@@ -235,6 +240,7 @@ const getMonthlyReport = async (req, res) => {
     // ✅ CRITICAL FIX: Use single JOIN query instead of O(n²) filtering (Bug #4)
     // Old code had nested loops: for each class, filter all students, then filter all logs
     // This caused 30-60 second timeouts for large schools
+    // ✅ FIX M3: Count unique student+date combos instead of al.id to prevent duplicate scan inflation
     const classWiseData = [];
     const classWiseQuery = await query(
       `SELECT
@@ -242,7 +248,7 @@ const getMonthlyReport = async (req, res) => {
         c.class_name,
         COUNT(DISTINCT s.id) as total_students,
         COUNT(DISTINCT CASE
-          WHEN al.status IN ('present', 'late') THEN al.id
+          WHEN al.status IN ('present', 'late') THEN CONCAT(al.student_id, '_', al.date)
           ELSE NULL
         END) as present_count
        FROM classes c
@@ -281,29 +287,32 @@ const getMonthlyReport = async (req, res) => {
       const presentDays = studentLogs.filter(log => log.status === 'present' || log.status === 'late').length;
       const studentAttendance = totalWorkingDays > 0 ? ((presentDays / totalWorkingDays) * 100).toFixed(1) : 0;
 
-      if (parseFloat(studentAttendance) < 75) {
-        studentsNeedingAttention.push({
-          ...student,
-          presentDays,
-          absentDays: totalWorkingDays - presentDays,
-          attendanceRate: parseFloat(studentAttendance)
-        });
-      } else if (parseFloat(studentAttendance) === 100) {
-        perfectAttendance.push({
-          ...student,
-          presentDays,
-          attendanceRate: 100
-        });
+      if (totalWorkingDays > 0) {
+        if (parseFloat(studentAttendance) < 75) {
+          studentsNeedingAttention.push({
+            ...student,
+            presentDays,
+            absentDays: totalWorkingDays - presentDays,
+            attendanceRate: parseFloat(studentAttendance)
+          });
+        } else if (parseFloat(studentAttendance) === 100) {
+          perfectAttendance.push({
+            ...student,
+            presentDays,
+            attendanceRate: 100
+          });
+        }
       }
     }
 
     // ✅ CRITICAL FIX: Use single query instead of O(n²) filtering for gender breakdown
+    // ✅ FIX: Count unique student+date combos to prevent duplicate scan inflation
     const genderQuery = await query(
       `SELECT
         s.gender,
         COUNT(DISTINCT s.id) as total_students,
         COUNT(DISTINCT CASE
-          WHEN al.status IN ('present', 'late') THEN al.id
+          WHEN al.status IN ('present', 'late') THEN CONCAT(al.student_id, '_', al.date)
           ELSE NULL
         END) as present_count
        FROM students s
@@ -348,10 +357,29 @@ const getMonthlyReport = async (req, res) => {
         averageAttendance: parseFloat(averageAttendance),
         totalPresent,
         totalAbsent,
-        totalOnTime: logs.filter(log => log.status === 'present').length,
-        totalLate: logs.filter(log => log.status === 'late').length,
+        // ✅ FIX M1: Only count on-time/late from working days (exclude holiday/weekend scans)
+        totalOnTime: (() => {
+          const workingDates = new Set(dailyData.map(d => d.date));
+          return logs.filter(log => {
+            const logDate = typeof log.date === 'string' ? log.date.split('T')[0] : new Date(log.date).toISOString().split('T')[0];
+            return log.status === 'present' && workingDates.has(logDate);
+          }).length;
+        })(),
+        totalLate: (() => {
+          const workingDates = new Set(dailyData.map(d => d.date));
+          return logs.filter(log => {
+            const logDate = typeof log.date === 'string' ? log.date.split('T')[0] : new Date(log.date).toISOString().split('T')[0];
+            return log.status === 'late' && workingDates.has(logDate);
+          }).length;
+        })(),
         punctualityRate: totalPresent > 0
-          ? ((logs.filter(log => log.status === 'present').length / totalPresent) * 100).toFixed(1)
+          ? (((() => {
+            const workingDates = new Set(dailyData.map(d => d.date));
+            return logs.filter(log => {
+              const logDate = typeof log.date === 'string' ? log.date.split('T')[0] : new Date(log.date).toISOString().split('T')[0];
+              return log.status === 'present' && workingDates.has(logDate);
+            }).length;
+          })() / totalPresent) * 100).toFixed(1)
           : 0,
         attendanceRate: parseFloat(averageAttendance),
         // Additional calculations
@@ -455,16 +483,36 @@ const getStudentReport = async (req, res) => {
       return sendError(res, 'Access denied', 403);
     }
 
-    // Get attendance logs for the student in the date range
-    // Note: getLogsForDateRange returns raw array, we then filter for this specific student
-    const allLogs = await AttendanceLog.getLogsForDateRange(schoolId, startDate, endDate);
-    const studentLogs = allLogs.filter(log => String(log.student_id) === String(studentId));
+    // ✅ FIX S3: Use SQL-level filtering for student_id instead of fetching all school logs
+    const studentLogs = await query(
+      `SELECT
+        al.id, al.student_id,
+        TO_CHAR(al.date, 'YYYY-MM-DD') as date,
+        al.check_in_time,
+        NULL as check_out_time,
+        al.status,
+        al.created_at as timestamp,
+        al.notes,
+        s.full_name as student_name,
+        s.rfid_card_id as rfid_uid,
+        s.grade
+       FROM attendance_logs al
+       JOIN students s ON al.student_id = s.id
+       WHERE al.school_id = $1
+       AND al.student_id = $2
+       AND al.date BETWEEN $3 AND $4
+       ORDER BY al.date ASC, al.check_in_time ASC`,
+      [schoolId, studentId, startDate, endDate]
+    );
+    const studentLogRows = studentLogs.rows;
 
     // -------------------------------------------------------------------------
     // 🛑 REFACTORED: Use AttendanceCalculator for Single Student logic
     // -------------------------------------------------------------------------
-    // We pass ONLY this student's logs to the calculator, so the result is just for them.
-    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, studentLogs);
+    const dailyStats = await AttendanceCalculator.generateMonthlyCalendar(schoolId, startDate, endDate, studentLogRows);
+
+    // ✅ FIX S2: Skip future dates using robust IST string compare
+    const todayIST = getCurrentDateIST();
 
     let totalWorkingDays = 0;
     const detailedLogs = [];
@@ -472,6 +520,9 @@ const getStudentReport = async (req, res) => {
     dailyStats.forEach(dayStat => {
       const dateStr = dayStat.date;
       const dayName = new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' });
+
+      // Skip future dates using string compare
+      if (dateStr > todayIST) return;
 
       // 1. Weekend
       if (dayStat.isWeekend) {
@@ -507,7 +558,7 @@ const getStudentReport = async (req, res) => {
       // Wait, AttendanceCalculator.generateMonthlyCalendar returns aggregated stats, NOT the raw log details.
       // 
       // FIX: We need to find the raw log for this date to get check_in_time.
-      const originalLog = studentLogs.find(l => {
+      const originalLog = studentLogRows.find(l => {
         const logDate = typeof l.date === 'string' ? l.date.split('T')[0] : new Date(l.date).toISOString().split('T')[0];
         return logDate === dateStr;
       });
@@ -1057,9 +1108,13 @@ const getSmsAnalytics = async (req, res) => {
       if (l.status === 'late') { sent++; typeBreakdown.late++; }
     });
 
-    const absentStudents = await AttendanceLog.getAbsentStudents(schoolId, today);
-    sent += absentStudents.length;
-    typeBreakdown.absent = absentStudents.length;
+    // Fix: Calculate absent students correctly without missing method
+    const allStudents = await Student.findAll(schoolId, 1, 10000, { status: 'active' });
+    const presentCount = logs.logs.filter(l => l.status === 'present' || l.status === 'late').length;
+    const absentCount = Math.max(0, allStudents.total - presentCount);
+
+    sent += absentCount;
+    typeBreakdown.absent = absentCount;
 
     sendSuccess(res, {
       totalSent: sent,
