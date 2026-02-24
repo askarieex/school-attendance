@@ -662,40 +662,80 @@ const getClassReport = async (req, res) => {
       if (!d.isWeekend && !d.isHoliday) totalWorkingDays++;
     });
 
-    // 2. Process dailies per class
+    // 2. Process dails per class (keep for potential future use)
     const dailyStats = {};
-    let totalPresent = 0;
-    let totalLate = 0;
 
-    classLogs.forEach(log => {
-      const date = log.date.split('T')[0];
-      if (!dailyStats[date]) dailyStats[date] = { present: 0, late: 0 };
+    // 3. Process Per-Student Data (This is what the frontend actually needs!)
+    let classTotalPresent = 0;
+    let classTotalLate = 0;
+    let classTotalAbsent = 0;
+    let classTotalOnLeave = 0;
 
-      if (log.status === 'present') {
-        dailyStats[date].present++;
-        totalPresent++;
-      } else if (log.status === 'late') {
-        dailyStats[date].late++;
-        totalLate++;
+    const processedStudents = students.students.map(student => {
+      // Find all logs for this specific student in the date range
+      const sLogs = classLogs.filter(log => String(log.student_id) === String(student.id));
+
+      let sPresent = 0;
+      let sLate = 0;
+      let sAbsent = 0;
+      let sLeave = 0;
+
+      // We only count absence against working days. 
+      // A student's total attendance should be checked against totalWorkingDays.
+      sLogs.forEach(l => {
+        if (l.status === 'present') sPresent++;
+        else if (l.status === 'late') sLate++;
+        else if (l.status === 'absent') sAbsent++;
+      });
+
+      // Calculate missing absent days (if a student has no log on a working day, they are absent)
+      const mappedDays = sPresent + sLate + sAbsent + sLeave;
+      if (mappedDays < totalWorkingDays) {
+        sAbsent += (totalWorkingDays - mappedDays);
       }
+
+      classTotalPresent += sPresent;
+      classTotalLate += sLate;
+      classTotalAbsent += sAbsent;
+      classTotalOnLeave += sLeave;
+
+      const totalStudentLogs = sPresent + sLate;
+      const sRate = totalWorkingDays > 0 ? ((totalStudentLogs / totalWorkingDays) * 100).toFixed(1) : 0;
+
+      return {
+        id: student.id,
+        name: student.full_name,
+        rollNumber: student.roll_number,
+        present: sPresent,
+        late: sLate,
+        absent: sAbsent,
+        onLeave: sLeave,
+        attendanceRate: parseFloat(sRate)
+      };
     });
 
     const maxPossibleAttendance = students.total * totalWorkingDays;
     const avgAttendance = maxPossibleAttendance > 0
-      ? ((totalPresent + totalLate) / maxPossibleAttendance * 100).toFixed(1)
+      ? (((classTotalPresent + classTotalLate) / maxPossibleAttendance) * 100).toFixed(1)
       : 0;
 
+    // The Frontend `renderClassReport` expects: classInfo, attendanceStats, students
     const report = {
-      classInfo: classData.rows[0],
-      dateRange: { startDate, endDate },
-      totalStudents: students.total,
-      totalWorkingDays, // Added info
-      summary: {
-        totalPresent,
-        totalLate,
-        avgAttendance // Precise calc
+      classInfo: {
+        ...classData.rows[0],
+        totalStudents: students.total
       },
-      dailyStats
+      dateRange: { startDate, endDate },
+      attendanceStats: {
+        totalWorkingDays, // Just for reference
+        present: classTotalPresent,
+        late: classTotalLate,
+        absent: classTotalAbsent,
+        onLeave: classTotalOnLeave,
+        attendanceRate: parseFloat(avgAttendance)
+      },
+      students: processedStudents, // Expected to have: rollNumber, name, present, absent, late, attendanceRate
+      dailyStats // Keeping it in case other logic needs it
     };
 
     sendSuccess(res, report, 'Class report generated successfully');
