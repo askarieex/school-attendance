@@ -72,6 +72,7 @@ const whatsappRoutes = require('./routes/whatsapp.routes');
 const subjectRoutes = require('./routes/subject.routes');
 const autoAbsenceRoutes = require('./routes/autoAbsence.routes');
 const databaseRoutes = require('./routes/database.routes');
+const backupRoutes = require('./routes/backup.routes');
 
 
 // Import middleware
@@ -159,8 +160,6 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // ✅ SECURITY FIX: Don't skip rate limiting, use higher limit in dev
-  max: process.env.NODE_ENV === 'production' ? 100 : 10000
 });
 
 // Strict rate limiting for auth endpoints (prevent brute force)
@@ -226,6 +225,7 @@ app.use(`/api/${API_VERSION}/school/holidays`, holidayRoutes);
 app.use(`/api/${API_VERSION}/school/leaves`, leaveRoutes);
 app.use(`/api/${API_VERSION}/school/subjects`, subjectRoutes);
 app.use(`/api/${API_VERSION}/school/auto-absence`, autoAbsenceRoutes);
+app.use(`/api/${API_VERSION}/school/backup`, backupRoutes);
 app.use(`/api/${API_VERSION}/school`, schoolRoutes);
 app.use(`/api/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/api/${API_VERSION}/device/sync`, deviceSyncRoutes);

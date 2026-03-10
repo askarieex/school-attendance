@@ -317,4 +317,25 @@ export const devicesAPI = {
   verifySync: (deviceId) => api.post(`/device-management/${deviceId}/verify-sync`),
 };
 
+// Backup APIs (Google Drive Integration)
+export const backupAPI = {
+  // Check Google Drive connection status
+  getStatus: () => api.get('/school/backup/google-drive/status'),
+
+  // Get OAuth authorization URL
+  getConnectUrl: () => api.get('/school/backup/google-drive/connect'),
+
+  // Disconnect Google Drive
+  disconnect: () => api.post('/school/backup/google-drive/disconnect'),
+
+  // Create and upload backup now
+  uploadNow: () => api.post('/school/backup/google-drive/upload-now'),
+
+  // List backups in Google Drive
+  listBackups: () => api.get('/school/backup/google-drive/list'),
+
+  // Get backup upload history
+  getLogs: () => api.get('/school/backup/logs'),
+};
+
 export default api;

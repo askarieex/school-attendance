@@ -15,7 +15,8 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiBookOpen,
-  FiCpu
+  FiCpu,
+  FiDatabase
 } from 'react-icons/fi';
 import './Sidebar.css';
 
@@ -30,11 +31,12 @@ const Sidebar = () => {
     { path: '/classes', icon: FiBook, label: 'Classes', badge: null },
     { path: '/teachers', icon: FiUserCheck, label: 'Teachers', badge: null },
     { path: '/subjects', icon: FiBookOpen, label: 'Subjects', badge: null },
-    { path: '/attendance', icon: FiClipboard, label: 'Attendance', badge: 'New' },
-    { path: '/devices', icon: FiCpu, label: 'Devices', badge: 'New' },
+    { path: '/attendance', icon: FiClipboard, label: 'Attendance', badge: null },
+    { path: '/devices', icon: FiCpu, label: 'Devices', badge: null },
     { path: '/calendar', icon: FiCalendar, label: 'Calendar', badge: null },
     { path: '/leaves', icon: FiUserX, label: 'Leaves', badge: null },
     { path: '/reports', icon: FiBarChart2, label: 'Reports', badge: null },
+    { path: '/backup', icon: FiDatabase, label: 'Backup', badge: 'New' },
     { path: '/settings', icon: FiSettings, label: 'Settings', badge: null },
   ];
 

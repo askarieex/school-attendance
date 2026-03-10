@@ -17,6 +17,7 @@ import Calendar from './pages/CalendarNew';
 import Leaves from './pages/Leaves';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import BackupSettings from './pages/BackupSettings';
 import Devices from './pages/Devices';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
@@ -54,6 +55,7 @@ function App() {
                         <Route path="/leaves" element={<Leaves />} />
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/backup" element={<BackupSettings />} />
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
                       </Routes>
